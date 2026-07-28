@@ -1,0 +1,30 @@
+body {
+    background-color: #f8f9fa;
+}
+
+.sidebar {
+    height: 100vh;
+    background-color: #e9ecef;
+    padding: 10px;
+}
+
+.message-tabs textarea {
+    resize: none;
+}
+
+.center-box {
+    border: 1px solid #dee2e6;
+    padding: 15px;
+    border-radius: 5px;
+    background-color: #fff;
+}
+
+.app-header {
+    background-color: #198754;
+    color: #fff;
+    padding: 10px 20px;
+}
+
+.app-header h4 {
+    margin: 0;
+}

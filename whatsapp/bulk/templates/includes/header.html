@@ -1,0 +1,232 @@
+{% load static %}
+
+<!-- Header Section -->
+<header class="app-header bg-success text-white py-2 mb-3">
+  <div class="mainhead d-flex justify-content-between align-items-center position-relative">
+    <a href="{% url 'index' %}">
+      <img class="logo" src="{% static 'img/xencommune.png' %}" alt="logo">
+    </a>
+
+    <div class="rightsideofnavbar d-flex align-items-center">
+      <!-- account icon -->
+      <div class="account-dropdown position-relative">
+        <button class="btn btn-success accounticon" id="accountIcon" type="button" data-bs-toggle="dropdown">
+          <i class="bi bi-person-square"></i>
+        </button>
+        <ul class="dropdown-menu">
+          {% for account in accounts %}
+          <li><a class="dropdown-item" href="#">{{ account.name }}</a></li>
+          {% empty %}
+          <li><a class="dropdown-item" href="#">No accounts</a></li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <!-- add account icon -->
+      <div class="add-icon-section">
+        <button class="btn btn-success addacoountbtn" data-bs-toggle="modal" data-bs-target="#manageAccountsModal">
+          <i class="bi bi-plus-square"></i>
+        </button>
+
+        <!-- Add Account Modal -->
+        <div class="modal fade" id="manageAccountsModal" tabindex="-1" aria-labelledby="manageAccountsLabel"
+          aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+              <!-- Modal Header -->
+              <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="manageAccountsLabel">Account Control</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                  aria-label="Close"></button>
+              </div>
+
+              <!-- Modal Body -->
+              <div class="modal-body px-2 px-md-4">
+                <!-- Responsive Table -->
+                <div class="table-responsive">
+                  <table class="table table-bordered text-center align-middle">
+                    <thead class="table-light">
+                      <tr>
+                        <th>Accounts</th>
+                        <th>Default Status</th>
+                        <th>Settings</th>
+                        <th>Load</th>
+                        <th>Delete</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for account in accounts %}
+                      <tr>
+                        <td>{{ account.name }}</td>
+                        <td>
+                          {% if account.is_default %}
+                          <span class="text-success"><i class="bi bi-check-square-fill"></i></span>
+                          {% else %}
+                          <span class="text-danger"><i class="bi bi-x-square-fill"></i></span>
+                          {% endif %}
+                        </td>
+                        <td>
+                          <button class="btn btn-secondary btn-sm">
+                            <a class="text-white text-decoration-none"
+                              href="{% url 'settings_view' %}?id={{ account.id }}">Settings</a>
+                          </button>
+                        </td>
+                        <td>
+                          <button class="btn btn-success btn-sm" onclick="scanQr({{ account.id }})">Load</button>
+
+                          <form method="post" action="{% url 'add_account' %}">
+                            {% csrf_token %}
+                          </form>
+                        </td>
+                        <td>
+                          <form method="post" action="{% url 'delete_account' account.id %}"
+                            onsubmit="return confirm('Are you sure?')">
+                            {% csrf_token %}
+                            <button class="btn btn-danger btn-sm delete-account">
+                              <i class="bi bi-archive-fill"></i>
+                            </button>
+                          </form>
+                        </td>
+                      </tr>
+                      {% empty %}
+                      <tr>
+                        <td colspan="5" class="text-center text-muted">No accounts found.</td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- Add Account Button -->
+                <div class="d-grid d-md-flex justify-content-md-end mt-3">
+                  <button class="btn btn-success" onclick="window.location.href='{% url 'add_account' %}'">
+                    + ADD NEW ACCOUNT
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- settings icon -->
+      <div class="settings-icon-section">
+        <button class="btn btn-success settingsicon" data-bs-toggle="modal" data-bs-target="#settingsModal">
+          <i class="bi bi-three-dots-vertical"></i>
+        </button>
+
+        <!-- Settings Modal -->
+        <div class="modal fade" id="settingsModal" tabindex="-1" aria-labelledby="settingsModalLabel"
+          aria-hidden="true">
+          <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+            <div class="modal-content">
+              <!-- Modal Header -->
+              <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="settingsModalLabel">Settings</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                  aria-label="Close"></button>
+              </div>
+
+              <!-- Modal Body -->
+              <div class="modal-body">
+                <form id="settingsForm" method="post" action="{% url 'settings_view' %}">
+                  {% csrf_token %}
+
+                  <!-- 1. Account Settings -->
+                  <div class="mb-4">
+                    <h6 class="fw-bold text-success">1. Account Settings</h6>
+                    <div class="mb-3">
+                      <label class="form-label">Account Nickname</label>
+                      <input type="text" class="form-control" name="account_nickname" placeholder="e.g. Main Account" />
+                    </div>
+                    <!-- <div class="mb-3">
+                      <label class="form-label">Scan QR Code</label>
+                      <input type="file" class="form-control" name="qr_code" />
+                    </div> -->
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" name="active_status" id="activeStatus" checked />
+                      <label class="form-check-label text-black" for="activeStatus">Mark Account as Active</label>
+                    </div>
+                  </div>
+
+                  <!-- 2. Scheduling -->
+                  <div class="mb-4">
+                    <h6 class="fw-bold text-success">2. Scheduling</h6>
+                    <div class="mb-3">
+                      <label class="form-label">Send At</label>
+                      <input type="datetime-local" class="form-control" name="send_at" />
+                    </div>
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" name="repeat_schedule" id="repeatSchedule" />
+                      <label class="form-check-label text-black" for="repeatSchedule">Repeat Daily</label>
+                    </div>
+                  </div>
+
+                  <!-- 3. Campaign Logs -->
+                  <div class="mb-4">
+                    <h6 class="fw-bold text-success">3. Campaign Logs</h6>
+                    <div class="mb-3">
+                      <label class="form-label">Enable Logging</label>
+                      <select class="form-select" name="logging_enabled">
+                        <option value="enabled">Enabled</option>
+                        <option value="disabled">Disabled</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <!-- 4. Privacy & Security -->
+                  <div class="mb-4">
+                    <h6 class="fw-bold text-success">4. Privacy & Security</h6>
+                    <div class="form-check mb-2">
+                      <input class="form-check-input" type="checkbox" name="encryption" id="encryption" checked />
+                      <label class="form-check-label text-black" for="encryption">Encrypt Data</label>
+                    </div>
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" name="backup" id="backup" />
+                      <label class="form-check-label text-black" for="backup">Enable Data Backup</label>
+                    </div>
+                  </div>
+                </form>
+              </div>
+
+              <!-- Modal Footer -->
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-success" onclick="submitSettings()">Save Settings</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+<script>
+  function scanQr(accountId) {
+    console.log("Initiating scan for account:", accountId);
+
+    fetch(`/initiate_qr_scan/${accountId}/`, {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": document.querySelector('[name=csrfmiddlewaretoken]').value,
+        "X-Requested-With": "XMLHttpRequest"
+      }
+    })
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === "success") {
+          alert(data.message);
+          if (data.redirect_url) {
+            window.location.href = data.redirect_url;
+          }
+        } else {
+          alert("Error: " + data.message);
+        }
+      })
+      .catch(error => {
+        console.error("Request failed:", error);
+      });
+  }
+
+</script>
+<!-- Header Section end -->

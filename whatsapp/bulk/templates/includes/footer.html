@@ -1,0 +1,70 @@
+{% load static %}
+
+<section class="footersection">
+  <!-- Footer Section -->
+  <footer class="footerarea">
+    <!-- Wave SVG -->
+    <div class="wave-container">
+      <svg viewBox="0 0 1440 150" preserveAspectRatio="none" class="wave-svg">
+        <path d="M0,0 C460,250 1203,0 1440,10 L1440,250 L0,150 Z" fill="#198754"></path>
+      </svg>
+    </div>
+
+    <!-- Footer Content -->
+    <div class="footer-content">
+      <img class="footerlogo" src="{% static 'img/xencommune.png' %}" alt="logo">
+      <p>© 2025 XenCommune. All rights reserved.</p>
+    </div>
+  </footer>
+</section>
+
+<!-- Footer JavaScript -->
+<script>
+  function submitSettings() {
+    const form = document.getElementById('settingsForm');
+    if (form) {
+      form.submit();
+    } else {
+      alert("Settings saved successfully!");
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    const deleteButtons = document.querySelectorAll(".delete-account");
+
+    deleteButtons.forEach(button => {
+      button.addEventListener("click", function () {
+        const row = button.closest("tr");
+        if (confirm("Are you sure you want to delete this account?")) {
+          // Form submission will handle the deletion
+          return true;
+        }
+        return false;
+      });
+    });
+
+    // Country codes functionality
+    const countryCodes = [
+      { "name": "India", "dial_code": "+91" },
+      { "name": "United States", "dial_code": "+1" },
+      { "name": "United Kingdom", "dial_code": "+44" },
+      { "name": "UAE", "dial_code": "+971" },
+      { "name": "Australia", "dial_code": "+61" },
+      { "name": "Germany", "dial_code": "+49" },
+      { "name": "France", "dial_code": "+33" },
+      { "name": "Japan", "dial_code": "+81" },
+      { "name": "Canada", "dial_code": "+1" },
+      { "name": "Singapore", "dial_code": "+65" },
+    ];
+
+    const select = document.getElementById("countryCode");
+    if (select) {
+      countryCodes.forEach(country => {
+        const option = document.createElement("option");
+        option.value = country.dial_code;
+        option.text = `${country.name} (${country.dial_code})`;
+        select.appendChild(option);
+      });
+    }
+  });
+</script>

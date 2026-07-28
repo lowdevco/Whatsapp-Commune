@@ -1,0 +1,432 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+
+<!-- Back to Home Button -->
+<div class="m-2 d-flex align-items-center justify-content-start">
+  <a class="btn btn-outline-success" href="{% url 'index' %}">
+    <i class="bi bi-arrow-left-square-fill"></i> Back to Home
+  </a>
+</div>
+
+<!-- MAIN SECTION -->
+<div class="container runareacontainer mt-3 py-4">
+  <h4 class="text-white bg-success p-2 rounded">🚀 Deploy Campaign</h4>
+
+  <!-- Campaign Summary -->
+  <div class="mb-4">
+    <strong>Selected Account:</strong> {{ account.name }} ({{ account.number }})<br>
+    <strong>Total Numbers:</strong> {{ campaign.numbers|linebreaksbr }}<br>
+    <strong>Message 1:</strong>
+    <div class="border rounded p-2 bg-light">{{ campaign.message1|linebreaksbr }}</div>
+
+    {% if campaign.message2 %}
+    <strong>Message 2:</strong>
+    <div class="border rounded p-2 bg-light">{{ campaign.message2|linebreaksbr }}</div>
+    {% endif %}
+
+    {% if campaign.attachment %}
+    <strong>Attachment:</strong>
+    <a href="{{ campaign.attachment.url }}" class="btn btn-sm btn-outline-primary" target="_blank">
+      View Attachment
+    </a>
+    {% endif %}
+  </div>
+
+  <!-- Deploy Controls -->
+  <div class="step-box">
+    <div class="row align-items-center mb-3">
+      <div class="col">
+        <strong>Use your mobile to open WhatsApp and scan the QR code</strong>
+      </div>
+      <div class="col-auto">
+        <div class="status-text text-end" id="campaign-status">Status: Not Initialised</div>
+      </div>
+    </div>
+
+    <!-- Deploy Button -->
+    <form method="post" action="{% url 'start_messaging' campaign.id %}?account_id={{ account.id }}" id="start-form">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-outline-success mb-3" id="start-btn">
+        <i class="bi bi-play-fill"></i> START MESSAGING
+      </button>
+    </form>
+
+
+
+    <!-- Campaign Control Buttons -->
+    <div class="d-flex gap-2">
+      <button id="pause-btn" class="btn btn-secondary" onclick="pauseCampaign()" style="display:none;">
+        <i class="bi bi-pause-fill"></i> PAUSE
+      </button>
+      <button id="resume-btn" class="btn btn-warning" onclick="resumeCampaign()" style="display:none;">
+        <i class="bi bi-play-fill"></i> RESUME
+      </button>
+      <button id="stop-btn" class="btn btn-danger" onclick="stopCampaign()" style="display:none;">
+        <i class="bi bi-stop-fill"></i> STOP
+      </button>
+    </div>
+  </div>
+
+  <!-- Progress Bar -->
+  <div class="step-box mt-4">
+    <div class="mb-2"><strong>Progress</strong></div>
+    <div class="progress mb-3" style="height: 25px;">
+      <div class="progress-bar bg-success" id="progress-bar" role="progressbar" style="width: 0%" aria-valuenow="0"
+        aria-valuemin="0" aria-valuemax="100">
+        0%
+      </div>
+    </div>
+    <div class="row text-center">
+      <div class="col">
+        <span class="badge bg-secondary" id="pending-count">Pending: 0</span>
+      </div>
+      <div class="col">
+        <span class="badge bg-primary" id="processing-count">Processing: 0</span>
+      </div>
+      <div class="col">
+        <span class="badge bg-success" id="sent-count">Sent: 0</span>
+      </div>
+      <div class="col">
+        <span class="badge bg-danger" id="failed-count">Failed: 0</span>
+      </div>
+      <div class="col">
+        <span class="badge bg-warning" id="invalid-count">Invalid: 0</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Table -->
+  <div class="step-box mt-4">
+    <div class="col mb-3">
+      <strong>Detailed Status</strong>
+    </div>
+    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+      <table class="table table-bordered table-striped">
+        <thead class="table-light sticky-top">
+          <tr>
+            <th>Name/Number</th>
+            <th>Status</th>
+            <th>Timestamp</th>
+          </tr>
+        </thead>
+        <tbody id="status-tbody">
+          {% for number in campaign.numbers.splitlines %}
+          <tr id="row-{{ number|slugify }}">
+            <td>{{ number }}</td>
+            <td class="status">
+              <span class="badge bg-secondary">Pending</span>
+            </td>
+            <td class="timestamp">-</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Important Notes -->
+  <div class="important-notes mt-4">
+    <strong>Important Notes</strong>
+    <ol>
+      <li>Ensure the app stays open during the entire sending process.</li>
+      <li>Use only an established WhatsApp account, not a brand-new one.</li>
+      <li>This tool sends messages via your browser session; delivery depends on WhatsApp.</li>
+      <li>You can pause, resume, or stop the campaign at any time using the control buttons.</li>
+    </ol>
+  </div>
+</div>
+
+<!-- Real-time Status Updater -->
+<script>
+  let campaignRunning = false;
+  let updateInterval;
+  const UPDATE_INTERVAL = 4000; // 4 seconds
+
+  // Handle form submission
+  document.getElementById('start-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+
+    const startBtn = document.getElementById('start-btn');
+    startBtn.disabled = true;
+    startBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Starting...';
+
+    fetch("{% url 'start_messaging' campaign.id %}?account_id={{ campaign.whatsapp_account.id }}", {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': '{{ csrf_token }}',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          startBtn.style.display = 'none';
+          document.getElementById('pause-btn').style.display = 'inline-block';
+          document.getElementById('stop-btn').style.display = 'inline-block';
+          campaignRunning = true;
+          startStatusUpdates();
+        } else {
+          alert('Error: ' + data.message);
+          startBtn.disabled = false;
+          startBtn.innerHTML = '<i class="bi bi-play-fill"></i> START MESSAGING';
+        }
+      })
+      .catch(err => {
+        console.error('Error:', err);
+        alert('An error occurred while starting the campaign');
+        startBtn.disabled = false;
+        startBtn.innerHTML = '<i class="bi bi-play-fill"></i> START MESSAGING';
+      });
+  });
+
+  function updateStatus() {
+    fetch("{% url 'campaign_status' campaign.id %}")
+      .then(res => res.json())
+      .then(data => {
+        console.log("Campaign status data:", data);
+
+        // Update global campaign status
+        const overallStatus = data.overall_status || "Not Started";
+        document.getElementById("campaign-status").innerText = "Status: " + overallStatus;
+
+        // Update button states
+        updateButtonStates(overallStatus);
+
+        // Update progress bar & counts
+        if (data.counts) updateProgress(data.counts);
+
+        // Update each row
+        if (data.statuses) {
+          for (let [num, status] of Object.entries(data.statuses)) {
+            const rowId = "row-" + num.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+            let row = document.getElementById(rowId);
+            if (row) {
+              const statusCell = row.querySelector(".status");
+              const timestampCell = row.querySelector(".timestamp");
+              statusCell.innerHTML = `<span class="badge ${getStatusBadgeClass(status)}">${status}</span>`;
+              timestampCell.innerText = new Date().toLocaleTimeString();
+            } else {
+              console.warn("Row not found for number:", num);
+            }
+          }
+        }
+
+        // Stop polling if campaign is completed/stopped
+        if (overallStatus === 'Completed' || overallStatus === 'Stopped') {
+          campaignRunning = false;
+          stopStatusUpdates();
+          console.log("Campaign finished, polling stopped.");
+        }
+      })
+      .catch(err => console.error("Status fetch error:", err));
+  }
+
+  function updateButtonStates(status) {
+    const startBtn = document.getElementById("start-btn");
+    const pauseBtn = document.getElementById("pause-btn");
+    const resumeBtn = document.getElementById("resume-btn");
+    const stopBtn = document.getElementById("stop-btn");
+
+    if (status === "Running") {
+      startBtn.style.display = "none";
+      pauseBtn.style.display = "inline-block";
+      resumeBtn.style.display = "none";
+      stopBtn.style.display = "inline-block";
+      stopBtn.disabled = false;
+    } else if (status === "Paused") {
+      startBtn.style.display = "none";
+      pauseBtn.style.display = "none";
+      resumeBtn.style.display = "inline-block";
+      stopBtn.style.display = "inline-block";
+      stopBtn.disabled = false;
+    } else if (status === "Completed" || status === "Stopped") {
+      // Hide all buttons
+      startBtn.style.display = "none";
+      pauseBtn.style.display = "none";
+      resumeBtn.style.display = "none";
+      stopBtn.style.display = "none";
+    } else {
+      // Default state
+      startBtn.style.display = "inline-block";
+      pauseBtn.style.display = "none";
+      resumeBtn.style.display = "none";
+      stopBtn.style.display = "none";
+    }
+  }
+
+
+  function updateProgress(counts) {
+    const total = counts.Pending + counts.Processing + counts.Sent + counts.Failed + counts.Invalid;
+    const completed = counts.Sent + counts.Failed + counts.Invalid;
+    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    // Update progress bar
+    const progressBar = document.getElementById('progress-bar');
+    progressBar.style.width = percentage + '%';
+    progressBar.setAttribute('aria-valuenow', percentage);
+    progressBar.innerText = percentage + '%';
+
+    // Update count badges
+    document.getElementById('pending-count').innerText = `Pending: ${counts.Pending || 0}`;
+    document.getElementById('processing-count').innerText = `Processing: ${counts.Processing || 0}`;
+    document.getElementById('sent-count').innerText = `Sent: ${counts.Sent || 0}`;
+    document.getElementById('failed-count').innerText = `Failed: ${counts.Failed || 0}`;
+    document.getElementById('invalid-count').innerText = `Invalid: ${counts.Invalid || 0}`;
+  }
+
+  function getStatusBadgeClass(status) {
+    switch (status) {
+      case 'Pending': return 'bg-secondary';
+      case 'Processing': return 'bg-primary';
+      case 'Sent': return 'bg-success';
+      case 'Failed': return 'bg-danger';
+      case 'Invalid': return 'bg-warning';
+      default: return 'bg-secondary';
+    }
+  }
+
+  function pauseCampaign() {
+    fetch("{% url 'pause_campaign' campaign.id %}", {
+      method: 'POST',
+      headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          alert("Campaign paused");
+        } else {
+          alert("Error: " + data.message);
+        }
+      })
+      .catch(err => {
+        console.error('Error:', err);
+        alert('An error occurred while pausing the campaign');
+      });
+  }
+
+  function resumeCampaign() {
+    fetch("{% url 'resume_campaign' campaign.id %}", {
+      method: 'POST',
+      headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          alert("Campaign resumed");
+        } else {
+          alert("Error: " + data.message);
+        }
+      })
+      .catch(err => {
+        console.error('Error:', err);
+        alert('An error occurred while resuming the campaign');
+      });
+  }
+
+  function stopCampaign() {
+    if (confirm("Are you sure you want to stop the campaign? This action cannot be undone.")) {
+      fetch("{% url 'stop_campaign' campaign.id %}", {
+        method: 'POST',
+        headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            alert("Campaign stopped");
+            campaignRunning = false;
+            stopStatusUpdates();
+          } else {
+            alert("Error: " + data.message);
+          }
+        })
+        .catch(err => {
+          console.error('Error:', err);
+          alert('An error occurred while stopping the campaign');
+        });
+    }
+  }
+
+  function startStatusUpdates() {
+    if (updateInterval) {
+      clearInterval(updateInterval);
+    }
+    // Update immediately and then every 4 seconds
+    updateStatus();
+    updateInterval = setInterval(updateStatus, UPDATE_INTERVAL);
+  }
+
+  function stopStatusUpdates() {
+    if (updateInterval) {
+      clearInterval(updateInterval);
+      updateInterval = null;
+    }
+  }
+
+  // Start polling on page load if campaign is already running
+  document.addEventListener('DOMContentLoaded', function () {
+    // Check initial status
+    updateStatus();
+
+    // Check if campaign is running and start polling if needed
+    setTimeout(() => {
+      const statusText = document.getElementById("campaign-status").innerText;
+      if (statusText.includes('Running') || statusText.includes('Processing')) {
+        startStatusUpdates();
+      }
+    }, 1000);
+  });
+
+  // Clean up on page unload
+  window.addEventListener('beforeunload', function () {
+    stopStatusUpdates();
+  });
+</script>
+
+<!-- Custom CSS for better styling -->
+<style>
+  .step-box {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .important-notes {
+    background-color: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 8px;
+    padding: 15px;
+  }
+
+  .table th {
+    background-color: #e9ecef !important;
+  }
+
+  .progress {
+    background-color: #e9ecef;
+  }
+
+  .badge {
+    font-size: 0.75em;
+  }
+
+  #status-tbody tr:hover {
+    background-color: #f5f5f5;
+  }
+
+  .btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .sticky-top {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+</style>
+
+{% endblock %}

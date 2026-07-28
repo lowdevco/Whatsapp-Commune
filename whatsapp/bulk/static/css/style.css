@@ -1,0 +1,448 @@
+body {
+  background-color: #f9f9f9;
+}
+.mainformdiv {
+  background-color: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+   #splashScreen {
+    background-color: #ffffff;
+    display: none;
+  }
+.app-header {
+  padding: 10px 20px;
+}
+.logo {
+  width: 100px;
+  height: 80px;
+}
+
+
+.firstcol{
+  border-radius: 10px;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+.addingaccount{
+box-shadow: 0 1PX 2PX 1PX rgba(0, 0, 0, 0.08);
+padding: 20PX;
+}
+
+.leftarea {
+background-color: #ffffff;
+  padding: 20px;
+}
+
+.middleheader{
+   border-radius: 10px;
+margin-bottom: 10px; 
+}
+
+.leftsideheader{
+  border-radius: 15px;
+  border-top-left-radius: 5px;
+  border-top-right-radius: 5px;
+margin-bottom: 10px;
+}
+ .leftsideheader2{
+ border-top-left-radius: 5px;
+  border-top-right-radius: 5px;
+ }
+
+.schedulemaindiv {
+  font-size: 14px;
+  color: #00681f;
+  background-color: #dcdcdc;
+  padding: 10px;
+  border-radius: 10px;
+}
+.schedulelabel {
+  color: #00681f;
+  font-weight: 700;
+  padding: 10px;
+}
+#scheduleinput {
+  border-radius: 0;
+  background-color: transparent;
+  margin: 10px;
+  color: #00681f;
+}
+#scheduleinput:focus {
+  outline: none;
+  border: none;
+}
+
+#accountMenu {
+  margin-top: 35px;
+}
+.accounts {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  font-size: px;
+}
+.Maketext {
+  background-color: #ffffff;
+  color: rgb(25, 135, 84);
+  text-align: center;
+  padding: 10px;
+  font-size: 20px;
+  font-weight: 400;
+  border: none;
+}
+.tablehead th {
+  background-color: rgb(25, 135, 84) !important;
+  color: #ffffff;
+}
+.accounticon{
+  font-size: 24px;
+  
+}
+.addacoountbtn {
+  font-size: 23px;
+  margin: 0;
+}
+.form-label {
+  color: rgb(63, 63, 63);
+}
+.dropdown-menu-custom {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 30px;
+  background-color: white;
+  color: green;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-radius: 4px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  z-index: 999;
+  width: 150px;
+}
+
+.dropdown-menu-custom li {
+  padding: 10px;
+  cursor: pointer;
+}
+
+.dropdown-menu-custom li:hover {
+  background-color: #f0f0f0;
+}
+.middlearea{
+  border-left: 1px solid rgba(168, 168, 168, 0.774);
+}
+.cursor-pointer {
+  cursor: pointer;
+}
+.mainformdiv {
+  border: 2px solid rgba(228, 228, 228, 0.466);
+  display: flex;
+  justify-content: space-around;
+}
+.is-default-icon {
+  font-size: 14px;
+}
+.tickicon {
+  font-size: 20px;
+}
+.modal-lg {
+  max-width: 1000px;
+}
+.btn-load {
+  background-color: #00681f;
+  border-radius: 5px;
+  color: white;
+  padding: 4px 10px;
+  border: none;
+}
+
+.footarea {
+  background-color: #ffffff;
+  padding: 20px;
+  padding-top: 0PX;
+}
+.modal-header {
+  background-color: rgb(25, 135, 84);
+  color: white;
+}
+.campaign-input {
+  border: none;
+  border-bottom: 2px solid #28a745;
+  outline: none;
+  width: 100%;
+}
+.table input[type="checkbox"] {
+  transform: scale(1.2);
+}
+.btn-schedule {
+  background-color: #dcdcdc;
+  border: none;
+  padding: 6px 12px;
+}
+.btn-start {
+  background-color: rgb(25, 135, 84);
+  color: white;
+  padding: 2px 10px;
+  border: none;
+  border-radius: 10px;
+  height: 50px;
+  width: 200px;
+}
+.btn-start a {
+  text-decoration: none;
+  color: white;
+}
+.btn-start:hover {
+  background-color: #1b6431;
+}
+.form-check-label {
+  margin-right: 15px;
+}
+.form-check-inline {
+  margin-right: 20px;
+}
+/* ---------------------------------------- */
+.groupmesgcard {
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  margin: 10px;
+  background-color: #ffffff;
+}
+
+textarea:focus,
+select:focus {
+  border-color: #198754;
+  box-shadow: 0 0 0 0.2rem rgba(25, 135, 84, 0.25);
+}
+
+.backtohomebtnone{
+  outline: none;
+  border: none;
+}
+.backtohomebtn{
+  text-decoration: none;
+  color:#198754;
+  font-size: 20px;
+}
+
+.backtohomebtn:hover{
+  text-decoration: none;
+  color:#ffffff;
+}
+/* -------------------------------------- */
+
+.step-box {
+  width: 100%;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 20px;
+  background-color: #fff;
+  margin-bottom: 20px;
+}
+.step-number {
+  background-color: #004122;
+  color: white;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  margin-right: 10px;
+  font-size: 14px;
+}
+.status-text {
+  font-weight: bold;
+  color: orange;
+}
+.Initiatebtn {
+  background-color: rgb(25, 135, 84);
+  color: white;
+  border: none;
+}
+.Initiatebtn:hover {
+  background-color: rgb(12, 124, 72);
+  color: white;
+}
+.status-text {
+  font-weight: bold;
+  color: rgb(170, 1, 1);
+  margin-left: 15px;
+}
+.btn-stop{
+  background-color: #ee0000;
+  color: white;
+}
+.btn-stop:hover{
+  background-color: #cc1717;
+  color: white;
+}
+.important-notes {
+  font-size: 14px;
+  color: rgb(94, 94, 94);
+  padding-left: 20px;
+}
+.chatnameinput{
+  border: none;
+}
+.messagearea{
+  height: 300px;
+}
+.chatnameinput:focus{
+  border: none;
+  outline: none;
+}
+.addaccount{
+  text-decoration: none;
+  color: white;
+}
+@media (max-width: 576px) {
+  .btn,
+  .btn-outline,
+  .btn-warning,
+  .btn-danger {
+    width: 100%;
+    margin-bottom: 10px;
+  }
+  .status-text {
+    margin-top: 10px;
+    width: 100%;
+  }
+}
+
+
+
+
+/* ---------- */
+
+
+/* ----------------- */
+
+/*----------- WhatsApp Account Form Wrapper------- */
+.whatsapp-account-form {
+  background-color: #f9f9f9;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.08);
+  margin: 0 auto;
+}
+
+.whatsapp-account-form label {
+  font-weight: 600;
+  color: #333;
+}
+
+.whatsapp-account-form input,
+.whatsapp-account-form textarea,
+.whatsapp-account-form select {
+  border-radius: 8px;
+  border: 1px solid #ccc;
+}
+
+.whatsapp-account-form .btn-primary,
+.whatsapp-account-form .btn-success {
+  border-radius: 8px;
+  padding: 0.5rem 1.2rem;
+  font-weight: 600;
+}
+
+.whatsapp-account-form .btn-primary:hover,
+.whatsapp-account-form .btn-success:hover {
+  opacity: 0.9;
+}
+
+.whatsapp-account-form .form-check {
+  padding-left: 1.5rem;
+}
+
+@media (max-width: 576px) {
+  .whatsapp-account-form {
+    padding: 1rem;
+  }
+}
+
+.seetingslink{
+  text-decoration: none;
+}
+/* --------settings css starting  --------- */
+    .modal-lg {
+      max-width: 90%;
+    }
+    .settingsicon{
+      font-size: 24px;
+    }
+    .section-title {
+      font-weight: bold;
+      font-size: 18px;
+      margin-top: 20px;
+      color: black;
+    }
+    .form-section {
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 20px;
+    }
+
+
+    /* footer */
+   .footersection{
+    margin-top: 200px;
+   }
+    .footerarea {
+      /* background-image: url("{% static 'img/footerbg.png' %}"); */
+  position: relative;
+  background-color:rgb(25,135,84);
+  color: white;
+  padding: 60px 20px 5px;
+  text-align: center;
+}
+
+.wave-container {
+  position: absolute;
+  top: -100px; 
+  left: 0;
+  width: 100%;
+  overflow: hidden;
+  line-height: 0;
+}
+.footerlogo{
+  height: 100px;
+}
+.wave-svg {
+
+  display: block;
+  width: 100%;
+  height: 100px;
+}
+.dropdown-menu-custom {
+  display: none;
+  position: absolute;
+  background-color: #fff;
+  list-style: none;
+  padding: 10px 0;
+  margin: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  top: 100%;
+  left: 0;
+  width: 100%; /* Make dropdown match the button width */
+  border-radius: 4px;
+  z-index: 1000;
+}
+
+.dropdown-menu-custom li {
+  padding: 8px 15px;
+  cursor: pointer;
+}
+
+.dropdown-menu-custom li:hover {
+  background-color: #f0f0f0;
+}
+
+.dropdown-menu-custom.show {
+  display: block;
+}

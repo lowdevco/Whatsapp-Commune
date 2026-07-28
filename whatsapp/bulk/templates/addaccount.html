@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+
+<!-- back to home btn -->
+<div class="m-2 d-flex align-items-center justify-content-start">
+  <button class="btn btn-outline-success backtohomebtnone">
+    <a class="backtohomebtn" href="{% url 'index' %}">
+      <i class="bi bi-arrow-left-square-fill"></i>
+    </a>
+  </button>
+</div>
+
+<div class="container addingaccount mt-5">
+  <h4 class="text-white bg-success p-2 rounded">Add WhatsApp Account</h4>
+
+  <form id="addWhatsAppAccountForm">
+    {% csrf_token %}
+
+    <div class="mb-3">
+      <label class="form-label">Account Name</label>
+      {{ form.name }}
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">WhatsApp Number</label>
+      {{ form.number }}
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Country Code</label>
+      <select id="countryCode" name="country_code" class="form-control" required>
+        <option value="">Select Country Code</option>
+        <option value="+91">+91 India</option>
+        <option value="+1">+1 USA</option>
+        <option value="+44">+44 UK</option>
+        <option value="+61">+61 Australia</option>
+        <option value="+971">+971 UAE</option>
+      </select>
+    </div>
+
+    <div class="form-check mb-3">
+      {{ form.is_default }}
+      <label class="form-check-label">Set as Default Account</label>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Notes</label>
+      {{ form.notes }}
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center">
+      <!-- <button type="button" id="scanBtn" class="btn btn-success" >
+        <i class="bi bi-qr-code-scan"></i> Initiate & Scan QR Code
+      </button> -->
+
+
+      <button type="button" id="saveBtn" class="btn btn-outline-success">
+        <i class="bi bi-save"></i> Save Account Only
+      </button>
+    </div>
+  </form>
+</div>
+
+<script>
+
+  // --- QR Scan ---
+  
+
+  // --- Save Account ---
+  // --- Save Account ---
+document.querySelector("#saveBtn").addEventListener("click", function () {
+  const form = document.getElementById("addWhatsAppAccountForm");
+  const formData = new FormData(form);
+
+  fetch("/add-account/", {
+    method: "POST",
+    headers: {
+      "X-CSRFToken": "4qlCsuLaz5ixXz4F8vY4e54Eo8rM6OxaKOdZnDKMBZ1EaGXzcIJCnXnvjivvehjB",
+      "X-Requested-With": "XMLHttpRequest"
+    },
+    body: formData   // ✅ added missing formData
+  })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        showToast("success", data.message);
+        window.location.href = "/";
+      } else {
+        showToast("error", data.message);
+      }
+    })
+    .catch(err => {
+      console.error("Save Account error:", err);
+      showToast("error", "Failed to save account");
+    });
+});
+
+
+
+  // Toast helper
+  function showToast(type, msg) {
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = `
+      <div class="toast align-items-center text-bg-${type} border-0 show mb-2 position-fixed bottom-0 end-0 p-3" style="z-index: 1100">
+        <div class="d-flex">
+          <div class="toast-body">${msg}</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+      </div>`;
+    document.body.appendChild(wrapper.firstChild);
+    new bootstrap.Toast(document.querySelector(".toast")).show();
+  }
+</script>
+
+{% endblock %}

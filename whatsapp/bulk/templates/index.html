@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+<form action="{% url 'save_campaign' %}" method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+
+  <!-- MAIN PART STARTING -->
+  <!-- <div>
+    <h4 data-i18n="makeBulk" class="m-3 mt-5 Maketext shadow-sm ">Make the bulk Message</h4>
+  </div> -->
+
+  <!-- Main Form -->
+  <div class="row g-4 m-3">
+    <!-- <div class="col-md-3 col-12">
+      <div class="p-3 border rounded shadow-sm h-100">
+        <div class="bg-success text-white py-2 px-3 mb-3 rounded">
+          <i class="bi bi-list-ol me-1"></i> Numbers List
+        </div>
+        <div style="max-height: 500px; overflow-y: auto;">
+          <table class="table table-bordered table-sm align-middle text-center">
+            <thead>
+              <tr>
+                <th>Sl. No</th>
+                <th>Number</th>
+                <th>Name</th>
+              </tr>
+            </thead>
+            <tbody id="numberTableBody">
+              {% if numbers_list %}
+              {% for num in numbers_list %}
+              <tr>
+                <td>{{ num.sl }}</td>
+                <td>{{ num.number }}</td>
+                <td>{{ num.name }}</td>
+              </tr>
+              {% endfor %}
+              {% else %}
+              <tr>
+                <td colspan="3" class="text-muted">No numbers added yet</td>
+              </tr>
+              {% endif %}
+            </tbody>
+
+          </table>
+        </div>
+      </div>
+    </div> -->
+    <!-- Individual Message Section -->
+    <div class="col-12 col-md-6">
+      <div class="p-3 border rounded shadow-sm h-100">
+        <div class="leftsideheader bg-success text-white py-2 px-3 mb-3 rounded">
+          <i class="bi bi-person-fill me-1"></i> Individual Message
+        </div>
+
+        <div>
+          <label for="excelUpload" class="form-label">Upload Excel File (CSV or XLSX)</label>
+          <input type="file" name="excel_file" class="form-control" id="excelUpload" accept=".csv, .xlsx">
+
+          <div class="form-check mt-3">
+            <input class="form-check-input" type="checkbox" id="deduplicate" name="deduplicate">
+            <label class="form-check-label" for="deduplicate">Remove Duplicates</label>
+          </div>
+
+          <div class="mt-3">
+            <label for="manualNumbers" class="form-label">Enter Contact Numbers</label>
+            <textarea class="form-control" id="manualNumbers" name="manual_numbers" rows="5"
+              placeholder="Eg: 9876543210, 9123456789"></textarea>
+          </div>
+
+          <div class="mt-3">
+            <label for="countryCode" class="form-label">Select Country Code</label>
+            <select id="countryCode" name="country_code" class="form-control">
+              <option value="">-- Select Country --</option>
+              <!-- JS fills options -->
+            </select>
+          </div>
+        </div>
+        <!-- 
+        <div class="mt-4">
+          <h6>Preview of All Numbers:</h6>
+          <ul id="numberPreview" class="list-group"></ul>
+        </div> -->
+      </div>
+    </div>
+
+    <!-- Group Message Section -->
+    <div class="col-12 col-md-6">
+      <div class="p-3 border rounded shadow-sm h-100">
+        <div class="leftsideheader bg-success text-white py-2 px-3 mb-3 rounded">
+          <i class="bi bi-whatsapp me-1"></i> Groups Message
+        </div>
+
+        <div>
+          <label for="whatsappGroupSelect" class="form-label fw-semibold">Choose WhatsApp Group</label>
+          <select id="whatsappGroupSelect" name="whatsapp_group" class="form-select mb-3">
+            <option value="" disabled selected>Select a group</option>
+            <option value="Family Group">Family Group</option>
+            <option value="Work Team">Work Team</option>
+            <option value="Marketing Broadcast">Marketing Broadcast</option>
+          </select>
+
+          <button class="btn btn-outline-success w-100" type="button">
+            <i class="bi bi-plus-circle me-1"></i> Add WhatsApp Group
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Message area -->
+  <div class="bg-success shadow-sm text-white m-3 p-2 mt-5">
+    <i class="bi bi-pencil-square"></i> Message Area
+  </div>
+
+  <!-- message tab -->
+  <div class="col-md-12 p-5 pt-3 mt-4 shadow-sm rightarea">
+    <ul class="nav nav-tabs nav-fill" id="messageTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link messagearea1 active" id="msg1-tab" data-bs-toggle="tab" data-bs-target="#msg1">Message
+          1</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="msg2-tab" data-bs-toggle="tab" data-bs-target="#msg2">Message 2</button>
+      </li>
+    </ul>
+
+    <div class="tab-content p-3 bg-white border border-top-0 rounded-bottom shadow-sm">
+      <div class="tab-pane fade messagearea2 show active" id="msg1">
+        <textarea class="form-control" name="message_1" rows="4" placeholder="Enter Message 1"></textarea>
+      </div>
+      <div class="tab-pane fade" id="msg2">
+        <textarea class="form-control" name="message_2" rows="4" placeholder="Enter Message 2"></textarea>
+      </div>
+    </div>
+
+    <!-- Attachment Upload -->
+    <div class="mt-3 Attachment">
+      <label for="attachmentUpload" class="form-label">Attach File (Image, PDF, etc.)</label>
+      <input type="file" class="form-control mb-2" name="attachment" id="attachmentUpload" multiple>
+      <small class="text-muted">You can upload multiple files (Images, PDFs, Docs, etc.)</small>
+    </div>
+
+    <!-- Launch buttons -->
+    <div>
+      <button class="btn btn-success startbtn mt-4" data-bs-toggle="modal" data-bs-target="#startCampaignModal"
+        type="button">
+        <i class="bi bi-cursor-fill"></i> START CAMPAIGN
+      </button>
+      <button class="btn btn-success mt-4" id="clearAllBtn" type="button">
+        <i class="bi bi-eraser-fill"></i> CLEAR ALL
+      </button>
+
+      <!-- Modal -->
+      <div class="modal fade" id="startCampaignModal" tabindex="-1" aria-labelledby="startCampaignLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Launch</h5>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <!-- Campaign Name -->
+              <div class="mb-3">
+                <label class="form-label fw-bold">Name Your Campaign</label>
+                <input type="text" class="form-control" name="campaign_name" placeholder="Enter Campaign Name">
+              </div>
+
+              <!-- Account List -->
+              <table class="table table-bordered text-center">
+                <thead class="tablehead">
+                  <tr>
+                    <th>Account Name</th>
+                    <th>Select</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for account in accounts %}
+                  <tr>
+                    <td>{{ account.name }} {% if account.is_default %}(Primary){% endif %}</td>
+                    <td><input type="checkbox" name="selected_accounts" value="{{ account.id }}"></td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+
+              <!-- Messaging Mode -->
+              <div class="mb-3">
+                <label class="form-label fw-bold">Multi Messaging Mode</label>
+                <select class="form-select" name="messaging_mode">
+                  <option value="">Select a mode</option>
+                  <option value="mode1">Mode 1</option>
+                  <option value="mode2">Mode 2</option>
+                </select>
+              </div>
+
+              <!-- Sending Mode -->
+              <div class="mb-3">
+                <label class="form-label fw-bold">Sending Mode</label><br>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" name="safe_mode" id="safeMode">
+                  <label class="form-check-label" for="safeMode">Safe Mode</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" name="unsafe_mode" id="unsafeMode">
+                  <label class="form-check-label" for="unsafeMode">UnSafe Mode</label>
+                </div>
+              </div>
+
+              <!-- Swipe, Delay, Schedule -->
+              <div class="mb-3">
+                <div class="row g-3">
+                  <div class="col-md-4">
+                    <label class="form-label fw-bold">Swipe Account After Messages</label>
+                    <input type="number" class="form-control" name="swipe_after" value="2">
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label fw-bold">Delay Between Messages (sec)</label>
+                    <input type="number" class="form-control" name="delay" placeholder="e.g. 5">
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label fw-bold">Schedule Your Message</label>
+                    <input type="datetime-local" class="form-control" name="schedule_time">
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="friendlyNumbers" name="friendly_numbers">
+                <label class="form-check-label" for="friendlyNumbers">Enable Friendly Numbers</label>
+              </div>
+
+              <div class="mt-4 btnstartmain d-flex justify-content-end">
+                <button type="submit" class="btn btn-success">
+                  <i class="bi bi-play-fill"></i> START NOW
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- End Modal -->
+    </div>
+  </div>
+</form>
+{% endblock %}
