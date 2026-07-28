@@ -1,9 +1,0 @@
-2026/07/24-16:25:11.232 1848 Reusing MANIFEST D:\lowdevco\Project\whatsapp_communo\whatsapp\whatsapp_sessions\acct_54_7907462335\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
-2026/07/24-16:25:11.233 1848 Recovering log #83
-2026/07/24-16:25:11.235 1848 Reusing old log D:\lowdevco\Project\whatsapp_communo\whatsapp\whatsapp_sessions\acct_54_7907462335\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/000083.log 
-2026/07/24-16:25:11.822 590 Compacting 1@1 + 2@2 files
-2026/07/24-16:25:11.876 590 Generated table #86@1: 71884 keys, 2215567 bytes
-2026/07/24-16:25:11.905 590 Generated table #87@1: 18922 keys, 2176840 bytes
-2026/07/24-16:25:11.912 590 Generated table #88@1: 398 keys, 494474 bytes
-2026/07/24-16:25:11.912 590 Compacted 1@1 + 2@2 files => 4886881 bytes
-2026/07/24-16:25:11.915 590 compacted to: files[ 0 0 4 0 0 0 0 ]

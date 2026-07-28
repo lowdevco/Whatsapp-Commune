@@ -2038,30 +2038,34 @@ def send_attachment_playwright(page, attachment_path):
             return False
  
         logger.info("📎 Clicking attachment button...")
-        attachment_button.click()
-        page.wait_for_timeout(2000)  # Wait for menu and inputs to appear
- 
-        # Select appropriate file input based on type
+        
+        # Determine the target menu item locator
         if is_media:
-            logger.info("🖼️ Using media file input for image/video...")
-            file_input_selector = 'input[accept="image/*,video/mp4,video/3gpp,video/quicktime"]'
+            target_btn = page.locator('[data-testid="attach-image"], span:has-text("Photos & videos"), span:has-text("Photos")').first
         else:
-            logger.info("📄 Using document file input for non-media...")
-            file_input_selector = 'input[accept="*"]'
- 
+            target_btn = page.locator('[data-testid="attach-document"], span:has-text("Document")').first
+
+        # Click attachment button
+        attachment_button.click(force=True, delay=100)
+        target_btn.wait_for(state='visible', timeout=5000)
+
+        # Select appropriate menu item and trigger file chooser
         try:
-            page.wait_for_selector(file_input_selector, state='attached', timeout=5000)  # Use 'attached' since inputs may be hidden
-            file_input = page.query_selector(file_input_selector)
-            if not file_input:
-                logger.error("❌ File input not found")
-                return False
+            with page.expect_file_chooser(timeout=10000) as fc_info:
+                if is_media:
+                    logger.info("🖼️ Clicking 'Photos & videos' menu item...")
+                    target_btn.click(timeout=5000)
+                else:
+                    logger.info("📄 Clicking 'Document' menu item...")
+                    target_btn.click(timeout=5000)
+            
+            file_chooser = fc_info.value
+            logger.info("📁 Uploading file via file chooser...")
+            file_chooser.set_files(attachment_path)
+            logger.info(f"📤 File uploaded: {attachment_path}")
         except Exception as e:
-            logger.error(f"❌ Error finding file input: {str(e)}")
+            logger.error(f"❌ Error during file chooser interaction: {str(e)}")
             return False
- 
-        logger.info("📁 Uploading file...")
-        file_input.set_input_files(attachment_path)
-        logger.info(f"📤 File uploaded: {attachment_path}")
         page.wait_for_timeout(5000)  # Allow file processing
  
         # Verify file preview if media
@@ -2296,7 +2300,8 @@ def process_campaign_background(campaign_id, account_id):
             return
         
         phone_numbers = [num.strip() for num in campaign.numbers.splitlines() if num.strip()]
-        session_path = Path(r"C:\Users\Gopesh\OneDrive\Desktop\cummuno\whatsapp\whatsapp_sessions") / f"acct_{account_id}_{selected_account_number}"
+        session_root = os.path.join(settings.BASE_DIR, "whatsapp_sessions")
+        session_path = Path(session_root) / f"acct_{account_id}_{selected_account_number}"
         
         # Initialize statuses
         for number in phone_numbers:

@@ -30,19 +30,6 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    const deleteButtons = document.querySelectorAll(".delete-account");
-
-    deleteButtons.forEach(button => {
-      button.addEventListener("click", function () {
-        const row = button.closest("tr");
-        if (confirm("Are you sure you want to delete this account?")) {
-          // Form submission will handle the deletion
-          return true;
-        }
-        return false;
-      });
-    });
-
     // Country codes functionality
     const countryCodes = [
       { "name": "India", "dial_code": "+91" },

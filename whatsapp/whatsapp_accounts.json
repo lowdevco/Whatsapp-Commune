@@ -4,12 +4,12 @@
         "pk": 12,
         "fields": {
             "user": 1,
-            "name": "Sruthi",
-            "number": "8129298266",
+            "name": "irfan",
+            "number": "xxxxxxxxxx",
             "country_code": "+91",
             "is_default": true,
             "notes": "business",
-            "session_path": "whatsapp/sessions/session_12"
+            "session_path": "whatsapp/sessions/session_32"
         }
     }
 ]
