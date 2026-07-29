@@ -5,11 +5,14 @@ from webdriver_manager.chrome import ChromeDriverManager
 def test_webdriver():
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--headless")  # Optional: run in headless mode
+    
 
     # Create a Service object
+
     service = Service(ChromeDriverManager().install())
 
     # Initialize the WebDriver with the service and options
+
     driver = webdriver.Chrome(service=service, options=chrome_options)
 
     try:
