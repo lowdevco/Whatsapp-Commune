@@ -2,7 +2,7 @@
 
 # WhatsApp Commune
 
-<sub>Browser automation for WhatsApp Web — built on Playwright and Selenium</sub>
+<sub>Browser automation for WhatsApp Web — built on Playwright</sub>
 
 </div>
 
@@ -21,13 +21,13 @@ It is not affiliated with, endorsed by, or connected to WhatsApp LLC or Meta Pla
 
 ## Overview
 
-WhatsApp Commune drives WhatsApp Web through browser automation, using **Playwright** and **Selenium** as interchangeable engines to interact with the interface programmatically.
+WhatsApp Commune drives WhatsApp Web through browser automation, using **Playwright** engine to interact with the interface programmatically.
 
 <br/>
 
 ## Legal Disclaimer
 
-This software is an independent project and is **not affiliated with, endorsed by, or connected to** WhatsApp LLC or Meta Platforms, Inc. It utilizes browser automation — Playwright and Selenium — to interact with WhatsApp Web. All trademarks referenced belong to their respective owners.
+This software is an independent project and is **not affiliated with, endorsed by, or connected to** WhatsApp LLC or Meta Platforms, Inc. It utilizes browser automation — Playwright — to interact with WhatsApp Web. All trademarks referenced belong to their respective owners.
 
 <br/>
 

@@ -3,7 +3,7 @@ __pycache__/
 *__pycache__/
 *.py[cod]
 *$py.class
-
+./whatsapp/bulk/__pycache__
 # Virtual Environment
 .env/
 env/
