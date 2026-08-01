@@ -1,6 +1,3 @@
-2026/07/28-16:45:55.046 1ae8 Reusing MANIFEST D:\lowdevco\Project\Whatsapp-communo\whatsapp\whatsapp_sessions\acct_57_7907462335\Default\Local Storage\leveldb/MANIFEST-000001
-2026/07/28-16:45:55.049 1ae8 Recovering log #16
-2026/07/28-16:45:55.051 1ae8 Reusing old log D:\lowdevco\Project\Whatsapp-communo\whatsapp\whatsapp_sessions\acct_57_7907462335\Default\Local Storage\leveldb/000016.log 
-2026/07/28-16:46:39.616 1304 Level-0 table #20: started
-2026/07/28-16:46:39.624 1304 Level-0 table #20: 15631 bytes OK
-2026/07/28-16:46:39.627 1304 Delete type=0 #16
+2026/07/31-17:41:08.760 64c4 Reusing MANIFEST D:\lowdevco\Project\Whatsapp-commune\whatsapp\whatsapp_sessions\acct_57_7907462335\Default\Local Storage\leveldb/MANIFEST-000001
+2026/07/31-17:41:08.764 64c4 Recovering log #57
+2026/07/31-17:41:08.766 64c4 Reusing old log D:\lowdevco\Project\Whatsapp-commune\whatsapp\whatsapp_sessions\acct_57_7907462335\Default\Local Storage\leveldb/000057.log 

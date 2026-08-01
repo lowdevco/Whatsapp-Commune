@@ -1,3 +1,15 @@
-2026/07/29-16:05:06.811 49a0 Reusing MANIFEST D:\lowdevco\Project\Whatsapp-communo\whatsapp\whatsapp_sessions\acct_57_7907462335\Default\Local Storage\leveldb/MANIFEST-000001
-2026/07/29-16:05:06.820 49a0 Recovering log #19
-2026/07/29-16:05:06.822 49a0 Reusing old log D:\lowdevco\Project\Whatsapp-communo\whatsapp\whatsapp_sessions\acct_57_7907462335\Default\Local Storage\leveldb/000019.log 
+2026/08/01-10:45:34.947 fbc Reusing MANIFEST D:\lowdevco\Project\Whatsapp-commune\whatsapp\whatsapp_sessions\acct_57_7907462335\Default\Local Storage\leveldb/MANIFEST-000001
+2026/08/01-10:45:34.953 fbc Recovering log #57
+2026/08/01-10:45:34.956 fbc Reusing old log D:\lowdevco\Project\Whatsapp-commune\whatsapp\whatsapp_sessions\acct_57_7907462335\Default\Local Storage\leveldb/000057.log 
+2026/08/01-10:46:16.572 2d20 Level-0 table #61: started
+2026/08/01-10:46:16.579 2d20 Level-0 table #61: 18549 bytes OK
+2026/08/01-10:46:16.582 2d20 Delete type=0 #57
+2026/08/01-10:46:16.583 2d20 Compacting 4@0 + 1@1 files
+2026/08/01-10:46:16.590 2d20 Generated table #62@0: 224 keys, 16947 bytes
+2026/08/01-10:46:16.590 2d20 Compacted 4@0 + 1@1 files => 16947 bytes
+2026/08/01-10:46:16.593 2d20 compacted to: files[ 0 1 0 0 0 0 0 ]
+2026/08/01-10:46:16.594 2d20 Delete type=2 #51
+2026/08/01-10:46:16.594 2d20 Delete type=2 #54
+2026/08/01-10:46:16.594 2d20 Delete type=2 #56
+2026/08/01-10:46:16.594 2d20 Delete type=2 #58
+2026/08/01-10:46:16.594 2d20 Delete type=2 #61

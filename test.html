@@ -1,0 +1,713 @@
+{% extends "website/base.html" %}
+
+{% load static %}
+
+{% block content %}
+
+  <main id="home">
+    <!-- ==========================================
+           HERO SECTION
+           ========================================== -->
+    <section id="home-section" class="hero-section reveal">
+      <!-- Background Image Carousel -->
+      <div class="hero-bg-carousel">
+        <div class="hero-bg-slide active" style="background-image: url('{% static "website/images/index/hero-1.png" %}');"></div>
+        <div class="hero-bg-slide" style="background-image: url('{% static "website/images/index/hero-2.png" %}');"></div>
+        <div class="hero-bg-slide" style="background-image: url('{% static "website/images/index/hero-3.png" %}');"></div>
+        <div class="hero-bg-overlay"></div>
+      </div>
+
+      <!-- Vertical Carousel Controls (dots on the right) -->
+      <div class="hero-carousel-controls">
+        <div class="hero-dot active" data-slide="0" aria-label="Slide 1" role="slide-1"></div>
+        <div class="hero-dot" data-slide="1" aria-label="Slide 2" role="slide-2"></div>
+        <div class="hero-dot" data-slide="2" aria-label="Slide 3" role="slide-3"></div>
+      </div>
+
+      <div class="container">
+        <div class="hero-content-carousel">
+
+          <!-- Slide 1 Content: General Brand Intro -->
+
+          <div class="hero-content-slide">
+            <div class="badge-highlight">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <span>We Never Let Your Fashion Fade – Premium Laundry in Dubai</span>
+            </div>
+
+            <h1 class="hero-title">
+              Where Premium Laundry Meets
+              <span>Professional Care.</span>
+            </h1>
+
+            <p class="hero-desc">
+              Experience the best laundry and dry cleaning services in Dubai with free home pickup and delivery. From everyday clothing to luxury garments, Waves Laundry delivers expert fabric care, spotless cleaning, and precision finishing you can trust.
+            </p>
+
+            <div class="hero-actions">
+              <button data-scroll-to="booking" class="btn btn-primary">
+                Schedule Free Pickup <i class="fa-solid fa-arrow-right"></i>
+              </button>
+              <a href="https://wa.me/971523033446" target="_blank">
+                <button class="btn btn-white-outline">
+                  <i class="fa-brands fa-whatsapp"></i>
+                  WhatsApp
+                </button>
+              </a>
+            </div>
+
+          </div>
+
+
+          <!-- Slide 2 Content: Dry Cleaning Specialists -->
+          <div class="hero-content-slide active">
+            <div class="badge-highlight">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <span>100% Gentle on Fabrics | Expert Dry Cleaning in Dubai</span>
+            </div>
+
+            <h1 class="hero-title">
+              <span>Expert Dry Cleaning</span> <br>
+              For Your Finest Garments.
+            </h1>
+
+            <p class="hero-desc">
+              Restore the look and feel of your favourite garments with the best dry cleaning service in Dubai. Waves Laundry provides professional dry cleaning with free home pickup and delivery.
+            </p>
+
+            <div class="hero-actions">
+              <button data-scroll-to="booking" class="btn btn-primary">
+                Schedule Free Pickup <i class="fa-solid fa-arrow-right"></i>
+              </button>
+              <a href="https://wa.me/971523033446" target="_blank">
+                <button class="btn btn-white-outline">
+                  <i class="fa-brands fa-whatsapp"></i>
+                  WhatsApp
+                </button>
+              </a>
+            </div>
+
+          </div>
+
+
+          <!-- Slide 3 Content: Home & Carpet Cleaning -->
+          <div class="hero-content-slide">
+            <div class="badge-highlight">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <span>Delicate Fabric Care | Premium Dry Cleaning in Dubai</span>
+            </div>
+
+            <h1 class="hero-title">
+              Expert Care for Delicate<br>
+              & <span>Designer Garments.</span>
+            </h1>
+
+            <p class="hero-desc">
+              Looking for premium garment care in Dubai? Our experienced team provides professional dress cleaning, expert stain removal, and precision finishing with free pickup and delivery.
+            </p>
+
+            <div class="hero-actions">
+              <button data-scroll-to="booking" class="btn btn-primary">
+                Schedule Free Pickup <i class="fa-solid fa-arrow-right"></i>
+              </button>
+              <a href="https://wa.me/971523033446" target="_blank">
+                <button class="btn btn-white-outline">
+                  <i class="fa-brands fa-whatsapp"></i>
+                  WhatsApp
+                </button>
+              </a>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+          HERO STATS BAR SECTION
+           ========================================== -->
+
+    <section class="hero-stats-section">
+      <div class="container">
+        <div class="stats-bar-inner">
+          <!-- Stat 1 -->
+          <div class="stat-bar-item">
+            <div class="stat-icon-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                stroke-linejoin="round" class="stat-svg">
+                <polygon
+                  points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
+                </polygon>
+              </svg>
+            </div>
+            <div class="stat-info">
+              <h2 class="stat-number">4.9/5</h2>
+              <p class="stat-label">Google Rating</p>
+            </div>
+          </div>
+
+          <!-- Stat 2 -->
+          <div class="stat-bar-item">
+            <div class="stat-icon-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                stroke-linejoin="round" class="stat-svg">
+                <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <path d="M16 10a4 4 0 0 1-8 0"></path>
+                <polyline points="9 14 11 16 15 12"></polyline>
+              </svg>
+            </div>
+            <div class="stat-info">
+              <h3 class="stat-number">10,000+</h3>
+              <p class="stat-label">Happy Clients</p>
+            </div>
+          </div>
+
+          <!-- Stat 3 -->
+          <div class="stat-bar-item">
+            <div class="stat-icon-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                stroke-linejoin="round" class="stat-svg">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+            </div>
+            <div class="stat-info">
+              <h3 class="stat-number">24-48 Hrs</h3>
+              <p class="stat-label">Delivery</p>
+            </div>
+          </div>
+
+          <!-- Stat 4 -->
+          <div class="stat-bar-item">
+            <div class="stat-icon-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                stroke-linejoin="round" class="stat-svg">
+                <path d="M2 22C2 22 8 20 12 16C16 12 22 6 22 2C22 2 16 2 12 6C8 10 2 22 2 22Z"></path>
+                <path d="M12 6L2 22"></path>
+              </svg>
+            </div>
+            <div class="stat-info">
+              <h3 class="stat-number">Eco</h3>
+              <p class="stat-label">Friendly</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+           3. SERVICES SECTION
+           ========================================== -->
+    <section id="services" class="services-section py-section reveal">
+      <div class="container">
+        <!-- Section Header -->
+        <div class="text-center">
+          <span class="section-subtitle">OUR PREMIUM SERVICES</span>
+          <h2 class="section-title">Expert care for every fabric and items</h2>
+        </div>
+
+        <!-- Services Slider Wrapper -->
+        <div class="services-slider-wrapper">
+          <!-- Prev Button -->
+          <button class="services-nav-btn prev-btn" id="services-prev" aria-label="Previous service">
+            <i class="fa-solid fa-chevron-left"></i>
+          </button>
+
+          <div class="services-slider-track-container">
+            <div class="services-slider-track" id="services-track">
+              <!-- Dynamically populated by assets/js/script.js using SERVICES_DATA -->
+            </div>
+          </div>
+
+          <!-- Next Button -->
+
+          <button class="services-nav-btn next-btn" id="services-next" aria-label="Next service">
+            <i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+           3. ABOUT US SECTION
+           ========================================== -->
+    <section class="about-section py-section reveal" id="about-section">
+      <div class="container">
+        <!-- About Waves Card -->
+        <div id="about" class="about-block">
+          <!-- Left Text Column -->
+          <div class="about-content">
+            <span class="section-subtitle subtitle-yellow-line">About Waves Laundry</span>
+            <h2 class="about-title">More Than Clean. It's Exceptional Care</h2>
+
+            <p class="about-teaser-yellow">
+              Waves Laundry helps individuals, families, professionals, and businesses care for their garments with confidence. 
+              We believe that a professional laundry service in Dubai is about more than simply washing clothes. It is about preserving the quality, comfort, and appearance of every garment through expert care.
+            </p>
+
+            <p class="about-description">
+              Our experienced team provides professional laundry and dry cleaning services in Dubai, giving every garment the care and attention it deserves.
+              From everyday clothing and delicate fabrics to designer garments, luxury bags, and shoes, we use expert cleaning techniques and professional finishing to help keep your belongings looking their best.
+            </p>
+
+            <!-- Mockup checklist with yellow checkmarks -->
+            <div class="about-features-grid">
+              <div class="about-feature-item">
+                <span class="feature-check"><i class="fa-solid fa-check"></i></span>
+                <span class="feature-text">Premium Laundry Care</span>
+              </div>
+              <div class="about-feature-item">
+                <span class="feature-check"><i class="fa-solid fa-check"></i></span>
+                <span class="feature-text">Professional Dry Cleaning</span>
+              </div>
+              <div class="about-feature-item">
+                <span class="feature-check"><i class="fa-solid fa-check"></i></span>
+                <span class="feature-text">Delicate Fabric Specialists</span>
+              </div>
+              <div class="about-feature-item">
+                <span class="feature-check"><i class="fa-solid fa-check"></i></span>
+                <span class="feature-text">Free Pickup & Delivery</span>
+              </div>
+            </div>
+
+            <!-- CTA row matching mockup style -->
+            <div class="about-cta-row">
+              <button class="btn btn-navy-accent">
+                Read More<span class="btn-yellow-arrow"><i class="fa-solid fa-chevron-right"></i></span>
+              </button>
+
+              <div class="about-phone-box">
+                <div class="about-phone-icon">
+                  <i class="fa-solid fa-phone"></i>
+                </div>
+                <div class="about-phone-text">
+                  <span class="phone-label">Call Support</span>
+                  <a href="tel:+971523033446" class="phone-value">+971 52 303 3446</a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Graphic Column (Inspiration-Based) -->
+          <div class="about-showcase-new">
+            <!-- Solid blue background card -->
+            <div class="showcase-blue-card">
+              <!-- Dot grids and bubbles decoration -->
+              <div class="showcase-dot-grid-1"></div>
+              <div class="showcase-dot-grid-2"></div>
+              <div class="showcase-bubbles-decor">
+                <span class="bubble bubble-1"></span>
+                <span class="bubble bubble-2"></span>
+                <span class="bubble bubble-3"></span>
+              </div>
+
+              <!-- Yellow circular backdrop -->
+              <div class="showcase-yellow-circle"></div>
+
+              <!-- Main Image -->
+              <div class="showcase-main-img-wrapper">
+                <img src="{% static "website/images/index/michane.png" %}" alt="Waves Premium Laundry Facility"
+                  class="showcase-main-img" />
+              </div>
+
+              <!-- Floating thumbnail 1 (Shoe Cleaning) -->
+              <div class="floating-thumb thumb-bottom-left">
+                <img src="{% static 'website/images/common_images/items/shoecleaning.png' %}" alt="Shoe Detailing" />
+              </div>
+
+              <!-- Floating thumbnail 2 (Dry Cleaning Facility) -->
+              <div class="floating-thumb thumb-top-right">
+                <img src="{% static 'website/images/common_images/items/jacket.png' %}" alt="Dry Cleaning Facility" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+           4. PRICE LIST SECTION
+           ========================================== -->
+   <section id="estimator" class="estimator-section py-section reveal">
+      <!-- Backdrop animations -->
+      <div class="wave-backdrop">
+        <div class="wave-circle-left"></div>
+        <div class="wave-circle-right"></div>
+      </div>
+
+      <div class="container" style="position: relative; z-index: 10">
+        <!-- Section Header -->
+        <div class="text-center" style="margin-bottom: 60px;">
+          <span class="section-subtitle">Price List</span>
+          <h2 class="section-title">Premium care for every item</h2>
+        </div>
+
+        <!-- Price List Tabs and Cards Grid Container -->
+        <div class="price-list-tabs-container theme-men" id="price-list-tabs-container">
+          <!-- Segmented Tab Switcher -->
+          <div class="text-center" style="margin-bottom: 20px;">
+            <div class="price-tabs-switcher">
+              <button class="price-tab active men-active" data-category-id="men">
+                <i class="fa-solid fa-shirt"></i> Men
+              </button>
+              <button class="price-tab" data-category-id="women">
+                <i class="fa-solid fa-person-dress"></i> Women
+              </button>
+              <button class="price-tab" data-category-id="home">
+                <i class="fa-solid fa-house"></i> Home Items
+              </button>
+              <div class="active-tab-indicator indicator-men" id="active-tab-indicator"></div>
+            </div>
+          </div>
+
+          <!-- Price Cards Grid -->
+          <div class="price-grid-container" id="price-grid-container">
+            <!-- Dynamically populated by assets/js/index/index.js -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+           5. WHY CHOOSE US 
+           ========================================== -->
+    <section class="benefits-section py-section reveal" id="home-sec">
+      <div class="container">
+        <div class="benefits-grid">
+          <!-- Left: Facility Plant image -->
+          <div class="benefits-showcase">
+            <div class="benefits-image-card">
+              <img src="{% static 'website/images/index/Lead.png' %}" alt="Waves Premium Laundry Cleaning Facility Plant" />
+            </div>
+
+            <!-- Overlays Badge -->
+            <div class="benefits-floating-badge glass">
+              <div class="benefits-badge-icon">
+                <i class="fa-solid fa-award"></i>
+              </div>
+              <div class="benefits-badge-text">
+                <p class="benefits-badge-title">Latest Technology</p>
+                <p class="benefits-badge-lbl">German-engineered facility</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: List of benefits -->
+          <div class="benefits-content">
+            <span class="section-subtitle">Why Choose Waves</span>
+            <h2 class="section-title">
+              Dubai’s Top-Rated Laundry Service For A Reason
+            </h2>
+
+            <p class="section-desc text-left">
+              We operate an advanced, eco-friendly laundry facility. By
+              handling our processes in-house, we guarantee
+              high-quality fabric care, express turnarounds, and hygienic
+              handling.
+            </p>
+
+            <div class="benefits-list">
+              <!-- Benefit 1 -->
+              <div class="benefit-item">
+                <div class="benefit-icon-wrapper">
+                  <i class="fa-solid fa-check"></i>
+                </div>
+                <div>
+                  <h3 class="benefit-text-title">
+                    Free Contactless Pickup & Delivery
+                  </h3>
+                  <p class="benefit-text-desc">
+                    Book online, drop at your door or lobby, and we take care
+                    of the rest without any physical contact.
+                  </p>
+                </div>
+              </div>
+
+              <!-- Benefit 2 -->
+              <div class="benefit-item">
+                <div class="benefit-icon-wrapper">
+                  <i class="fa-solid fa-check"></i>
+                </div>
+                <div>
+                  <h3 class="benefit-text-title">
+                    Fastest 30-Minute Pickups
+                  </h3>
+                  <p class="benefit-text-desc">
+                    Enjoy lightning-fast pickups. Once scheduled, our driver
+                    can arrive at your Dubai location within 30 minutes.
+                  </p>
+                </div>
+              </div>
+
+              <!-- Benefit 3 -->
+              <div class="benefit-item">
+                <div class="benefit-icon-wrapper">
+                  <i class="fa-solid fa-check"></i>
+                </div>
+                <div>
+                  <h3 class="benefit-text-title">
+                    Flexible Booking Calendars
+                  </h3>
+                  <p class="benefit-text-desc">
+                    Schedule pickups and drop-offs according to your custom
+                    availability—morning, noon, or night.
+                  </p>
+                </div>
+              </div>
+
+              <!-- Benefit 4 -->
+              <div class="benefit-item">
+                <div class="benefit-icon-wrapper">
+                  <i class="fa-solid fa-check"></i>
+                </div>
+                <div>
+                  <h3 class="benefit-text-title">
+                    Express Delivery in 24 Hours
+                  </h3>
+                  <p class="benefit-text-desc">
+                    Need clothes cleaned for a meeting or flight? Opt for our
+                    express service to get items back within 24 hours.
+                  </p>
+                </div>
+              </div>
+
+              <!-- Benefit 5 -->
+              <div class="benefit-item">
+                <div class="benefit-icon-wrapper">
+                  <i class="fa-solid fa-check"></i>
+                </div>
+                <div>
+                  <h3 class="benefit-text-title">
+                    Hygienic Fabric Sanitization
+                  </h3>
+                  <p class="benefit-text-desc">
+                    Deep sanitation cleaning methods that remove odors, germs,
+                    and bacteria, returning garments fresh and soft.
+                  </p>
+                </div>
+              </div>
+
+              <!-- Benefit 6 -->
+              <div class="benefit-item">
+                <div class="benefit-icon-wrapper">
+                  <i class="fa-solid fa-check"></i>
+                </div>
+                <div>
+                  <h3 class="benefit-text-title">
+                    Affordable & Transparent Pricing
+                  </h3>
+                  <p class="benefit-text-desc">
+                    No hidden fees. Free delivery all over service points.
+                    Check rates upfront via our interactive estimator.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+           6. DUBAI LOCATIONS SERVED
+           ========================================== -->
+    <section id="locations" class="locations-section py-section reveal">
+      <div class="container">
+        <!-- Header -->
+        <div class="text-center">
+          <span class="section-subtitle">Service Areas</span>
+          <h2 class="section-title">Laundry & Dry Cleaners Near You</h2>
+          <p class="section-desc">
+            We provide fast, free home pickup and delivery all across major
+            residential and commercial hubs in Dubai. Find your area below.
+          </p>
+        </div>
+
+        <!-- Locations Grid -->
+        <div class="locations-grid grid">
+          <!-- Area 1: Creek Harbour -->
+          <div class="location-card" id="creek-harbour">
+            <div>
+              <div class="location-icon-wrapper">
+                <i class="fa-solid fa-location-dot"></i>
+              </div>
+              <h3 class="location-name">Creek Harbour</h3>
+              <p class="location-area">Dubai Creek</p>
+              <p class="location-address">
+                Residential Pickup Hub, Creek Harbour, Dubai
+              </p>
+            </div>
+            <button data-scroll-to="booking" class="location-book-btn">
+              Book Pickup here <i class="fa-solid fa-up-right-from-square"></i>
+            </button>
+          </div>
+
+          <!-- Area 2: Business Bay -->
+          <div class="location-card" id="business-bay">
+            <div>
+              <div class="location-icon-wrapper">
+                <i class="fa-solid fa-location-dot"></i>
+              </div>
+              <h3 class="location-name">Business Bay</h3>
+              <p class="location-area">Downtown Outer</p>
+              <p class="location-address">
+                Commercial & Executive Laundry Bay, Dubai
+              </p>
+            </div>
+            <button data-scroll-to="booking" class="location-book-btn">
+              Book Pickup here <i class="fa-solid fa-up-right-from-square"></i>
+            </button>
+          </div>
+
+          <!-- Area 3: Down Town -->
+          <div class="location-card" id="down-town">
+            <div>
+              <div class="location-icon-wrapper">
+                <i class="fa-solid fa-location-dot"></i>
+              </div>
+              <h3 class="location-name">Down Town</h3>
+              <p class="location-area">Downtown Central</p>
+              <p class="location-address">
+                Boulevard Elite Care Center, Downtown, Dubai
+              </p>
+            </div>
+            <button data-scroll-to="booking" class="location-book-btn">
+              Book Pickup here <i class="fa-solid fa-up-right-from-square"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Support Alert block -->
+        <div class="support-card">
+          <div class="support-card-text">
+            <p class="support-card-title">Don't see your area listed?</p>
+            <p class="support-card-lbl">
+              We serve almost all parts of Dubai for bulk or custom requests.
+            </p>
+          </div>
+          <a href="tel:+971523033446" class="btn btn-primary">Call Customer Support</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+               7. BOOKING & SCHEDULING WIZARD
+               ========================================== -->
+    <section class="booking-section py-section reveal">
+      <div class="container booking-container" id="booking">
+
+        <!-- Header -->
+        <div class="text-center booking-p" style="margin-bottom:40px ;">
+          <span class="section-subtitle">Hassle-Free Booking</span>
+          <h2 class="section-title">Fill in to Book Your Services</h2>
+          <p>We provide fast, free home pickup and delivery all across major residential and commercial hubs in Dubai.
+            <br> Find your area below.
+          </p>
+        </div>
+
+        {% include "website/components/booking-wizard.html" %}
+
+      </div>
+
+    </section>
+
+    <!-- ==========================================
+           8. FREQUENTLY ASKED QUESTIONS (FAQ)
+           ========================================== -->
+    <section id="faq" class="faq-section py-section reveal">
+      <div class="container ">
+        <div class="faq-grid-new">
+          <!-- Left Column: FAQ Content -->
+          <div class="faq-content-col">
+            <div class="faq-header-new">
+              <span class="section-subtitle subtitle-green-line">FAQ</span>
+              <h2 class="section-title">Frequently Asked Have Any Questions</h2>
+            </div>
+
+            <!-- Search bar -->
+            <div class="faq-search-box-new">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" id="faq-search-input" placeholder="Search questions..." class="faq-search-input-new" />
+            </div>
+
+            <!-- FAQ Accordion List -->
+            <div class="faq-list">
+              <!-- FAQ 1 -->
+              <div class="faq-item">
+                <button class="faq-trigger">
+                  <span class="faq-question">What Services Do You Offer?</span>
+                  <i class="fa-regular fa-eye"></i>
+                </button>
+                <div class="faq-content-pane">
+                  <div class="faq-answer">
+                    We offer professional laundry, dry cleaning, steam pressing, carpet cleaning, curtain deep cleaning,
+                    sofa shampooing, and premium shoe care across Dubai with free doorstep pickup and delivery.
+                  </div>
+                </div>
+              </div>
+
+              <!-- FAQ 2 -->
+              <div class="faq-item">
+                <button class="faq-trigger">
+                  <span class="faq-question">Do You Have Certified Technicians?</span>
+                  <i class="fa-regular fa-eye"></i>
+                </button>
+                <div class="faq-content-pane">
+                  <div class="faq-answer">
+                    Yes, our fabric care experts and certified technicians inspect each garment individually, selecting
+                    the optimal cleaning method and eco-friendly detergents to ensure the highest quality results.
+                  </div>
+                </div>
+              </div>
+
+              <!-- FAQ 3 (Starts Expanded/Active) -->
+              <div class="faq-item ">
+                <button class="faq-trigger">
+                  <span class="faq-question">Can You Provide a Customized Service Plan?</span>
+                  <i class="fa-regular fa-eye-slash"></i>
+                </button>
+                <div class="faq-content-pane" style="max-height: 500px;">
+                  <div class="faq-answer">
+                    We value your feedback! Let us know about your experience and if there's anything else we can do to
+                    make your laundry service even better. We're always here to assist you.
+                  </div>
+                </div>
+              </div>
+
+              <!-- FAQ 4 -->
+              <div class="faq-item">
+                <button class="faq-trigger">
+                  <span class="faq-question">What is Your Pricing Structure?</span>
+                  <i class="fa-regular fa-eye"></i>
+                </button>
+                <div class="faq-content-pane">
+                  <div class="faq-answer">
+                    Our pricing is transparent and affordable. You can use our interactive Price Estimator tool above to
+                    select specific items and services to calculate your total cost before booking.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Empty search results placeholder -->
+            <div class="faq-empty-results" id="faq-empty-results" style="display: none">
+              <p>No results found for "<span></span>"</p>
+            </div>
+          </div>
+
+          <!-- Right Column: Illustration -->
+          <div class="faq-img-col">
+            <div class="faq-illustration-wrapper">
+              <img src="{% static 'website/images/index/Faq.png' %}" alt="Frequently Asked Questions Illustration"
+                class="faq-illustration" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+{% endblock content %}
+

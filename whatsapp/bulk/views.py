@@ -11,30 +11,20 @@ from django.shortcuts import render, redirect
 from django.conf import settings
 from django.http import JsonResponse,HttpResponse
 from django.views.decorators.csrf import csrf_exempt
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
 from django.contrib.auth import logout
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.keys import Keys
 from django.contrib.auth.decorators import login_required
 from .forms import WhatsAppAccountForm
 from django.shortcuts import get_object_or_404
 from .models import WhatsAppCampaign, WhatsAppAccount
 from django.contrib import messages
 import mimetypes
-from selenium import webdriver
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.forms import UserCreationForm
 from datetime import datetime
 import base64
-from selenium.common.exceptions import TimeoutException
 from django.urls import reverse
-from webdriver_manager.chrome import ChromeDriverManager
 logger = logging.getLogger(__name__)
 from django.http import JsonResponse
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 from .models import WhatsAppCampaign
 import pandas as pd
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
@@ -366,8 +356,13 @@ def save_campaign(request):
             print(f"🔍 Excel file content type: {excel_file.content_type}")
             
             try:
-                # Read the Excel file
-                df = pd.read_excel(excel_file)
+                # Read the file based on extension (CSV or Excel)
+                filename = excel_file.name.lower()
+                if filename.endswith('.csv'):
+                    # header=None ensures the first row isn't skipped. dtype=str prevents scientific notation.
+                    df = pd.read_csv(excel_file, header=None, dtype=str)
+                else:
+                    df = pd.read_excel(excel_file, header=None, dtype=str)
                 print(f"🔍 Excel shape: {df.shape}")
                 print(f"🔍 Excel columns: {df.columns.tolist()}")
                 print(f"🔍 Excel dtypes: {df.dtypes.tolist()}")
@@ -1431,9 +1426,8 @@ def create_unique_driver(campaign_id, user_id):
     """Create a Chrome driver with unique user data directory"""
     import tempfile
     import uuid
-    from selenium.webdriver.chrome.service import Service
-    from webdriver_manager.chrome import ChromeDriverManager
     
+
     # Create unique temporary directory for this campaign
     unique_id = f"{user_id}_{campaign_id}_{int(time.time())}_{uuid.uuid4().hex[:8]}"
     temp_dir = tempfile.mkdtemp(prefix=f"whatsapp_campaign_{unique_id}_")
@@ -2049,22 +2043,28 @@ def send_attachment_playwright(page, attachment_path):
         attachment_button.click(force=True, delay=100)
         target_btn.wait_for(state='visible', timeout=5000)
 
-        # Select appropriate menu item and trigger file chooser
+        # Trigger native OS file chooser using robust menu selectors
         try:
-            with page.expect_file_chooser(timeout=10000) as fc_info:
-                if is_media:
-                    logger.info("🖼️ Clicking 'Photos & videos' menu item...")
-                    target_btn.click(timeout=5000)
-                else:
-                    logger.info("📄 Clicking 'Document' menu item...")
-                    target_btn.click(timeout=5000)
+            page.wait_for_timeout(1000) # Wait for menu to animate in
             
+            # Using Playwright's robust text-engine OR chaining to avoid CSS hierarchy issues
+            if is_media:
+                menu_item = page.locator('text="Photos & videos"').or_(page.locator('text="Photos"')).or_(page.locator('[data-testid="attach-image"]')).first
+            else:
+                menu_item = page.locator('text="Document"').or_(page.locator('[data-testid="attach-document"]')).first
+                
+            # Click the menu item and catch the OS file dialog
+            with page.expect_file_chooser(timeout=10000) as fc_info:
+                # Use click with force to bypass overlays
+                menu_item.click(force=True)
+                
             file_chooser = fc_info.value
-            logger.info("📁 Uploading file via file chooser...")
+            logger.info("Uploading file via native file chooser...")
             file_chooser.set_files(attachment_path)
-            logger.info(f"📤 File uploaded: {attachment_path}")
+            logger.info(f"File uploaded successfully: {attachment_path}")
+            
         except Exception as e:
-            logger.error(f"❌ Error during file chooser interaction: {str(e)}")
+            logger.error(f"Error during file chooser interaction: {str(e)}")
             return False
         page.wait_for_timeout(5000)  # Allow file processing
  
@@ -2262,6 +2262,21 @@ def send_message_to_number(page, phone_number, message, campaign_id, attachment_
                 update_status(campaign_id, phone_number, 'Failed')
                 return False
         
+        # Wait for message/attachment to fully send
+        try:
+            # Give UI a moment to show the sending state
+            page.wait_for_timeout(500)
+            
+            # Check if there are any clock icons (messages currently sending/uploading)
+            # We wait up to 3 seconds for the icon to appear in case of UI lag
+            page.wait_for_selector('span[data-icon="msg-time"]', state='visible', timeout=3000)
+            
+            # If we reach here, it's currently uploading. Now wait for it to finish (disappear)
+            page.wait_for_selector('span[data-icon="msg-time"]', state='hidden', timeout=90000) # Wait up to 90s for video
+        except PlaywrightTimeoutError:
+            # If the clock never appeared, it sent instantly. If it timed out hiding, we continue anyway.
+            pass
+            
         update_status(campaign_id, phone_number, 'Sent')
         return True
         
@@ -2618,17 +2633,20 @@ def add_account(request):
             account.save()
 
             # ✅ Make this account default
+
             WhatsAppAccount.objects.filter(user=request.user).exclude(id=account.id).update(is_default=False)
             account.is_default = True
             account.save()
 
             # ✅ Create session folder
+
             session_root = os.path.join(settings.BASE_DIR, "whatsapp_sessions")
             os.makedirs(session_root, exist_ok=True)
             session_path = os.path.join(session_root, f"acct_{request.user.id}_{account.number}")
             os.makedirs(session_path, exist_ok=True)
 
-            # ✅ Store session path but don’t run Selenium immediately
+            # ✅ Store session path but don’t run  immediately
+
             account.session_path = session_path
             account.is_active = False
             account.save()
@@ -2660,44 +2678,7 @@ def add_account(request):
 
 
 
- 
 
-
-
-# @csrf_exempt  
-# def add_account_and_scan_qr(request):
-#     if request.method == 'POST':
-#         form = WhatsAppAccountForm(request.POST)
-#         if form.is_valid():
-#             account = form.save(commit=False)
-#             account.user = request.user
-#             account.save()
-
-           
-#             WhatsAppAccount.objects.filter(user=request.user).exclude(id=account.id).update(is_default=False)
-#             account.is_default = True
-#             account.save()
-
-#             try:
-#                 profile_dir = os.path.join(settings.BASE_DIR, 'sessions', f'session_{account.id}')
-#                 os.makedirs(profile_dir, exist_ok=True)
-
-#                 chrome_options = Options()
-#                 chrome_options.add_argument(f"--user-data-dir={profile_dir}")
-#                 chrome_options.add_argument("--profile-directory=Default")
-#                 chrome_options.add_argument("--start-maximized")
-
-#                 driver = webdriver.Chrome(options=chrome_options)
-#                 driver.get("https://web.whatsapp.com")
-#                 time.sleep(20)
-#                 driver.quit()
-
-#                 return JsonResponse({'success': True, 'message': 'Account added and QR scanned', 'account_id': account.id})
-#             except Exception as e:
-#                 return JsonResponse({'success': False, 'message': f'Selenium error: {str(e)}'})
-#         else:
-#             return JsonResponse({'success': False, 'message': 'Form error', 'errors': form.errors})
-#     return JsonResponse({'success': False, 'message': 'Invalid request'})
 
 def login_view(request):
     if request.method == 'POST':
