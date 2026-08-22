@@ -47,7 +47,7 @@ Meta actively detects and permanently bans phone numbers associated with unoffic
 
 <br/>
 
-**Copyright &copy; 2026 Xencommune. All Rights Reserved.**
+**Copyright &copy; 2026 WhatsApp Commune. All Rights Reserved.**
 
 No part of this software may be used, reproduced, modified, or distributed in any form or by any means — electronic or mechanical, including photocopying, recording, or by any information storage and retrieval system — without explicit written permission from the copyright holder.
 

@@ -57,7 +57,7 @@
 
 
       <button type="button" id="saveBtn" class="btn btn-outline-success">
-        <i class="bi bi-save"></i> Save Account Only
+        <i class="bi bi-save"></i> Save Account
       </button>
     </div>
   </form>
@@ -88,7 +88,18 @@ document.querySelector("#saveBtn").addEventListener("click", function () {
         showToast("success", data.message);
         window.location.href = "/";
       } else {
-        showToast("error", data.message);
+        let errorMsg = data.message;
+        if (data.errors) {
+            try {
+                const errObj = JSON.parse(data.errors);
+                const firstField = Object.keys(errObj)[0];
+                const firstError = errObj[firstField][0].message;
+                errorMsg = firstField.charAt(0).toUpperCase() + firstField.slice(1) + ": " + firstError;
+            } catch (e) {
+                console.error("Failed to parse errors", e);
+            }
+        }
+        showToast("error", errorMsg);
       }
     })
     .catch(err => {

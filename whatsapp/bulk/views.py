@@ -5,26 +5,38 @@ import random
 import psutil
 import shutil 
 import logging
+import re
+import csv
 import threading
 import tempfile
 from django.shortcuts import render, redirect
 from django.conf import settings
 from django.http import JsonResponse,HttpResponse
 from django.views.decorators.csrf import csrf_exempt
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from django.contrib.auth import logout
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
 from django.contrib.auth.decorators import login_required
 from .forms import WhatsAppAccountForm
 from django.shortcuts import get_object_or_404
-from .models import WhatsAppCampaign, WhatsAppAccount
+from .models import WhatsAppCampaign, WhatsAppAccount, FriendlyNumber
 from django.contrib import messages
 import mimetypes
+from selenium import webdriver
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.forms import UserCreationForm
 from datetime import datetime
 import base64
+from selenium.common.exceptions import TimeoutException
 from django.urls import reverse
+from webdriver_manager.chrome import ChromeDriverManager
 logger = logging.getLogger(__name__)
 from django.http import JsonResponse
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 from .models import WhatsAppCampaign
 import pandas as pd
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
@@ -34,6 +46,166 @@ import urllib.parse
 import logging
 from pathlib import Path
 from PIL import Image
+from google import genai
+from google.genai import errors as genai_errors
+from playwright_stealth import Stealth
+
+def human_click(page, selector):
+    """Simulates a human moving the mouse with jitter and clicking an element."""
+    try:
+        element = page.locator(selector).first
+        if element.is_visible(timeout=3000):
+            box = element.bounding_box()
+            if box and box['width'] > 0 and box['height'] > 0:
+                target_x = box['x'] + box['width'] * random.uniform(0.2, 0.8)
+                target_y = box['y'] + box['height'] * random.uniform(0.2, 0.8)
+                page.mouse.move(target_x, target_y, steps=random.randint(5, 15))
+                time.sleep(random.uniform(0.1, 0.3))
+                page.mouse.click(target_x, target_y)
+                return True
+            else:
+                element.click()
+                return True
+    except Exception as e:
+        logger.debug(f"human_click failed for selector '{selector}': {str(e)}")
+        # Direct fallback click
+        try:
+            page.locator(selector).first.click()
+            return True
+        except Exception as fallback_e:
+            logger.debug(f"Direct click fallback failed for '{selector}': {str(fallback_e)}")
+            raise fallback_e
+
+def execute_human_idle_action(page):
+    """
+    Safe idle action: Moves mouse cursor across blank chat wallpaper ONLY.
+    NEVER clicks anything, NEVER touches the sidebar, keeping New Chat button 100% untouched.
+    """
+    try:
+        viewport = page.viewport_size or {'width': 1280, 'height': 800}
+        # Right 50% of screen is chat wallpaper (completely safe neutral area)
+        safe_min_x = int(viewport['width'] * 0.5)
+        safe_max_x = int(viewport['width'] * 0.9)
+        safe_min_y = int(viewport['height'] * 0.2)
+        safe_max_y = int(viewport['height'] * 0.8)
+        
+        target_x = random.randint(safe_min_x, safe_max_x)
+        target_y = random.randint(safe_min_y, safe_max_y)
+        
+        # Drift cursor smoothly with micro-steps (no clicking!)
+        page.mouse.move(target_x, target_y, steps=random.randint(8, 18))
+    except Exception:
+        pass
+
+def get_gaussian_delay(mean=12.0, stddev=3.0, min_delay=6.0, max_delay=20.0):
+    """Generates a natural Gaussian (bell-curve) delay bounded by min/max limits."""
+    delay = random.gauss(mean, stddev)
+    return max(min_delay, min(max_delay, delay))
+
+
+def generate_ai_spintax_template(original_message):
+    """
+    Dynamically rewrites the message into a Spintax template to bypass spam filters,
+    while protecting links. Scales efficiently by generating the template once.
+    """
+    if not original_message or not original_message.strip():
+        return original_message
+        
+    from bulk.models import AppSetting
+    import os
+    from dotenv import load_dotenv
+    
+    try:
+        api_key_setting = AppSetting.objects.get(key='GEMINI_API_KEY')
+        api_key = api_key_setting.value
+    except AppSetting.DoesNotExist:
+        api_key = None
+        
+    # Fallback to .env file if no key in database
+    if not api_key:
+        load_dotenv()
+        api_key = os.environ.get("GEMINI_API_KEY")
+        
+    if not api_key:
+        return original_message # Safety fallback if key is missing
+
+    client = genai.Client(api_key=api_key)
+
+    # 1. Token Shield: Mask URLs so the AI cannot break them
+    urls = re.findall(r' (https?://[^\s]+)', original_message)
+    masked_message = original_message
+    for i, url in enumerate(urls):
+        masked_message = masked_message.replace(url, f"[LINK_{i}]")
+        
+    prompt = f"""
+    You are a strict copy-editor and WhatsApp marketing expert. 
+    Your goal is to take the provided message and rewrite it into a single, highly varied Spintax template.
+    
+    Spintax uses curly braces and pipe characters to provide random variations. 
+    For example: "{{Hi|Hello|Hey there}}, I wanted to share our {{new|latest|amazing}} product."
+    
+    STRICT RULES:
+    1. Create variations for greetings, transition phrases, adjectives, and sign-offs ONLY.
+    2. NEVER change the core meaning, facts, prices, or numbers.
+    3. Ensure ALL variations sound 100% natural, conversational, and native to a human speaker. DO NOT use awkward, robotic, or clunky phrasing.
+    4. Output EXACTLY the raw Spintax string and nothing else (no conversational filler, no markdown fences like ```spintax).
+    5. You must KEEP any [LINK_X] tags exactly as they are.
+    
+    Message to rewrite into Spintax:
+    {masked_message}
+    """
+    
+    # 2. Fallback Loop: Iterate through configured models
+    models_to_try = getattr(settings, 'GEMINI_MODELS', ["gemini-3.5-flash-lite", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.1-flash-lite"])
+    
+    for model_name in models_to_try:
+        try:
+            logger.info(f"[AI] Generating campaign spintax using model: {model_name}...")
+            response = client.models.generate_content(model=model_name, contents=prompt)
+            
+            if response and response.text:
+                rewritten = response.text.strip()
+                
+                # Clean Markdown fences if the AI mistakenly added them
+                rewritten = re.sub(r'^```(?:spintax|json|txt|markdown|md)?\s*(.*?)\s*```$', r'\1', rewritten, flags=re.IGNORECASE | re.DOTALL).strip()
+                
+                # 3. Token Unshield: Put the real URLs back in
+                for i, url in enumerate(urls):
+                    rewritten = rewritten.replace(f"[LINK_{i}]", url)
+                    
+                logger.info(f"[AI] Spintax generation complete using {model_name}. Generated Template: \n{rewritten}")
+                return rewritten
+                
+        except genai_errors.APIError as e:
+            logger.warning(f"[AI] API Error with model {model_name}: {e}. Falling back to next model...")
+            continue # Try next model
+        except Exception as e:
+            logger.error(f"[AI] Unexpected error with model {model_name}: {e}")
+            continue
+            
+    # Safety fallback if all AI attempts fail
+    logger.error("[AI] All AI Spintax generation attempts failed. Falling back to original message.")
+    return original_message
+# -------------------------
+
+def parse_normal_spintax(text):
+    """Parses standard spintax like: {Hi|Hello|Hey} there!"""
+    if not text:
+        return text
+    
+    import re
+    import random
+    
+    pattern = re.compile(r'\{([^{}]*)\}')
+    match = pattern.search(text)
+    
+    while match:
+        options = match.group(1).split('|')
+        choice = random.choice(options)
+        text = text[:match.start()] + choice + text[match.end():]
+        match = pattern.search(text)
+        
+    return text
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -137,17 +309,22 @@ def validate_phone_number(number):
         return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164).lstrip('+')
     except Exception:
         return None
+class CustomUserCreationForm(UserCreationForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['username'].help_text = "Required* Letters, digits and @/./+/-/_ "
 
 def signup_view(request):
     if request.method == 'POST':
-        form = UserCreationForm(request.POST)  
+        form = CustomUserCreationForm(request.POST)  
         if form.is_valid(): 
             form.save()     
             messages.success(request, "Account created successfully!")
-            return redirect('login') 
+            return redirect('login')
+        else:
+            messages.error(request, 'Please correct the error below.')
     else:
-        form = UserCreationForm()  
-
+        form = CustomUserCreationForm()
     return render(request, 'signup.html', {'form': form})
     
 def login_view(request):
@@ -173,7 +350,7 @@ def create_webdriver(user_data_dir=None):
         
         if user_data_dir and os.path.exists(user_data_dir):
             options.add_argument(f"--user-data-dir={user_data_dir}")
-            print(f"📁 Using user data dir: {user_data_dir}")
+            print(f" Using user data dir: {user_data_dir}")
         
         # Add common options to avoid common errors
         options.add_argument("--no-sandbox")
@@ -192,13 +369,19 @@ def create_webdriver(user_data_dir=None):
         return driver
         
     except Exception as e:
-        print(f"❌ Failed to create WebDriver: {str(e)}")
+        print(f" Failed to create WebDriver: {str(e)}")
         import traceback
         traceback.print_exc()
         return None
 
 
 def index(request):
+    from bulk.models import AppSetting
+    try:
+        gemini_api_key = AppSetting.objects.get(key='GEMINI_API_KEY').value
+    except AppSetting.DoesNotExist:
+        gemini_api_key = ""
+
     if request.user.is_authenticated:
         accounts = WhatsAppAccount.objects.filter(user=request.user)
         has_campaigns = WhatsAppCampaign.objects.filter(user=request.user).exists()
@@ -208,7 +391,8 @@ def index(request):
 
     return render(request, 'index.html', {
         'accounts': accounts,
-        'has_campaigns': has_campaigns
+        'has_campaigns': has_campaigns,
+        'gemini_api_key': gemini_api_key
     })
 
 
@@ -264,7 +448,7 @@ def launch_browser(session_path):
                         try:
                             # Check if browser is still alive
                             page.title()  # This will throw if browser is closed
-                            time.sleep(5)  # Wait 5 seconds before checking again
+                            time.sleep(random.uniform(4.0, 7.0))  # Wait 5 seconds before checking again
                         except:
                             # Browser was closed, exit loop
                             print("Browser session ended")
@@ -279,6 +463,36 @@ def launch_browser(session_path):
     # Run browser in a separate thread so it doesn't block Django
     browser_thread = threading.Thread(target=run_browser, daemon=True)
     browser_thread.start()
+
+def format_number_safely(number, default_country_code='+91'):
+    """
+    Safely formats a phone number using the phonenumbers library.
+    If valid, returns E164 format without the + (e.g. 919876543210) for WhatsApp API.
+    If it fails or is invalid, returns the raw digits to prevent breaking existing fallback logic.
+    """
+    number_str = str(number).strip()
+    if number_str.endswith('.0'):
+        number_str = number_str[:-2]
+        
+    raw_digits = ''.join(filter(str.isdigit, number_str))
+    
+    if not number_str.startswith('+'):
+        # Try prepending the default country code
+        test_number = str(default_country_code) + raw_digits
+    else:
+        test_number = number_str
+        
+    try:
+        import phonenumbers
+        parsed = phonenumbers.parse(test_number, None)
+        if phonenumbers.is_valid_number(parsed):
+            return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164).lstrip('+')
+    except Exception:
+        pass
+        
+    # If the library proves it is completely invalid or fake, we reject it 
+    # so the bot doesn't waste 10+ seconds trying to open a broken chat.
+    return ""
 
 @login_required
 def check_scan_status(request):
@@ -296,12 +510,17 @@ def save_campaign(request):
 
     if request.method == 'POST':
         # Get all form data
-        campaign_name = request.POST.get('campaign_name')
+        campaign_name_input = request.POST.get('campaign_name')
+        if campaign_name_input and campaign_name_input.strip():
+            campaign_name = campaign_name_input.strip()
+        else:
+            from datetime import datetime
+            campaign_name = f"Campaign #{datetime.now().strftime('%b %d, %I:%M %p')}"
         selected_accounts = request.POST.getlist('selected_accounts')
         message_1 = request.POST.get('message_1')
         message_2 = request.POST.get('message_2')
         excel_file = request.FILES.get('excel_file')
-        attachment = request.FILES.get('attachment')  # ✅ ADD: Get attachment file
+        attachment = request.FILES.get('attachment')  #  ADD: Get attachment file
         manual_numbers = request.POST.get('manual_numbers')
         country_code = request.POST.get('country_code')
         whatsapp_group = request.POST.get('whatsapp_group')
@@ -312,6 +531,9 @@ def save_campaign(request):
         delay = request.POST.get('delay')
         schedule_time_raw = request.POST.get('schedule_time')
         friendly_numbers = request.POST.get('friendly_numbers') == 'on'
+        send_as_caption = request.POST.get('send_as_caption') == 'on'
+        use_normal_spintax = request.POST.get('use_normal_spintax') == 'on'
+        use_ai_spintax = request.POST.get('use_ai_spintax') == 'on'
 
         # Handle schedule time
         if schedule_time_raw:
@@ -322,159 +544,143 @@ def save_campaign(request):
         else:
             schedule_time = None
 
-        print("🔍 DEBUG - Starting number processing...")
-        print(f"🔍 Manual numbers input: {repr(manual_numbers)}")
-        print(f"🔍 Excel file: {excel_file.name if excel_file else 'None'}")
-        print(f"🔍 Attachment file: {attachment.name if attachment else 'None'}")  # ✅ ADD: Debug attachment
+        print(f" DEBUG - Starting number processing...")
+        print(f" Manual numbers input: {repr(manual_numbers)}")
+        print(f" Excel file: {excel_file.name if excel_file else 'None'}")
+        print(f" Attachment file: {attachment.name if attachment else 'None'}")  #  ADD: Debug attachment
 
-        # ✅ Handle manual numbers
+        invalid_numbers = [] # Track rejected numbers here
+        
+        #  Handle manual numbers
         if manual_numbers:
-            print("🔍 Processing manual numbers...")
+            print(" Processing manual numbers...")
             for idx, num in enumerate(manual_numbers.split(","), start=1):
                 clean_num = num.strip()
                 if clean_num:
-                    # Validate manual number
-                    digits_only = ''.join(filter(str.isdigit, clean_num))
-                    if len(digits_only) >= 7:
-                        all_numbers.append(clean_num)
+                    formatted_num = format_number_safely(clean_num, country_code or '+91')
+                    if formatted_num:
+                        all_numbers.append(formatted_num)
                         numbers_list.append({
                             "sl": idx,
-                            "number": clean_num,
+                            "number": formatted_num,
                             "name": "-"
                         })
-                        print(f"✅ Added manual number: {clean_num}")
+                        print(f" Added manual number: {formatted_num}")
                     else:
-                        print(f"⚠️ Skipped invalid manual number: {clean_num}")
-            print(f"🔍 Manual numbers processed: {len(all_numbers)}")
+                        invalid_numbers.append(clean_num)
+                        print(f" Skipped invalid manual number: {clean_num}")
+            print(f" Manual numbers processed: {len(all_numbers)}")
         else:
-            print("🔍 No manual numbers provided")
+            print(" No manual numbers provided")
 
-        # ✅ Handle Excel numbers
+        #  Handle Excel numbers
         if excel_file:
-            print(f"🔍 Excel file received: {excel_file.name}")
-            print(f"🔍 Excel file size: {excel_file.size}")
-            print(f"🔍 Excel file content type: {excel_file.content_type}")
+            print(f" Excel file received: {excel_file.name}")
+            print(f" Excel file size: {excel_file.size}")
+            print(f" Excel file content type: {excel_file.content_type}")
             
             try:
-                # Read the file based on extension (CSV or Excel)
-                filename = excel_file.name.lower()
-                if filename.endswith('.csv'):
-                    # header=None ensures the first row isn't skipped. dtype=str prevents scientific notation.
-                    df = pd.read_csv(excel_file, header=None, dtype=str)
+                # Read the Excel or CSV file as strings to prevent scientific notation corruption
+                file_ext = os.path.splitext(excel_file.name)[1].lower()
+                if file_ext == '.csv':
+                    df = pd.read_csv(excel_file, dtype=str)
                 else:
-                    df = pd.read_excel(excel_file, header=None, dtype=str)
-                print(f"🔍 Excel shape: {df.shape}")
-                print(f"🔍 Excel columns: {df.columns.tolist()}")
-                print(f"🔍 Excel dtypes: {df.dtypes.tolist()}")
-                print(f"🔍 Raw DataFrame:")
+                    df = pd.read_excel(excel_file, dtype=str)
+                
+                print(f" Excel shape: {df.shape}")
+                print(f" Excel columns: {df.columns.tolist()}")
+                print(f" Excel dtypes: {df.dtypes.tolist()}")
+                print(f" Raw DataFrame:")
                 print(df)
                 
-                # ✅ Check if DataFrame is empty but has columns (headers as data)
+                #  Check if DataFrame is empty but has columns (headers as data)
                 if df.empty and len(df.columns) > 0:
-                    print("🔍 Empty DataFrame but has columns - treating headers as data")
+                    print(" Empty DataFrame but has columns - treating headers as data")
                     # Convert column headers to a row
                     header_data = df.columns.tolist()
-                    print(f"🔍 Header data: {header_data}")
+                    print(f" Header data: {header_data}")
                     
                     # Process the header data as if it's the first row
                     if len(header_data) > 0:
                         number_value = header_data[0]
-                        print(f"🔍 Processing header as number: {number_value} (type: {type(number_value)})")
+                        print(f" Processing header as number: {number_value} (type: {type(number_value)})")
                         
                         if number_value is not None:
-                            clean_num = str(number_value).strip()
-                            print(f"🔍 Clean number from header: '{clean_num}'")
-                            
-                            # Remove .0 if present
-                            if clean_num.endswith('.0'):
-                                clean_num = clean_num[:-2]
-                                print(f"🔍 After removing .0: '{clean_num}'")
-                            
-                            # Validate
-                            digits_only = ''.join(filter(str.isdigit, clean_num))
-                            print(f"🔍 Digits only: '{digits_only}' (length: {len(digits_only)})")
-                            
-                            if len(digits_only) >= 7:
-                                all_numbers.append(clean_num)
+                            formatted_num = format_number_safely(number_value, country_code or '+91')
+                            if formatted_num:
+                                all_numbers.append(formatted_num)
                                 numbers_list.append({
                                     "sl": len(numbers_list) + 1,
-                                    "number": clean_num,
+                                    "number": formatted_num,
                                     "name": header_data[1] if len(header_data) > 1 else "-"
                                 })
-                                print(f"✅ Added valid number from header: {clean_num}")
+                                print(f" Added valid number from header: {formatted_num}")
                             else:
-                                print(f"⚠️ Invalid number in header: '{clean_num}'")
+                                invalid_numbers.append(str(number_value))
+                                print(f" Invalid number in header: '{number_value}'")
                 
                 elif not df.empty:
                     # Normal processing for properly formatted Excel
-                    print("🔍 Processing normal Excel data...")
+                    print(" Processing normal Excel data...")
                     excel_count = 0
                     
                     for idx, row in df.iterrows():
-                        print(f"🔍 Processing row {idx}: {row.values}")
+                        print(f" Processing row {idx}: {row.values}")
                         
                         if len(df.columns) > 0:
                             number_value = row.iloc[0]
-                            print(f"🔍 First column value: {number_value} (type: {type(number_value)})")
+                            print(f" First column value: {number_value} (type: {type(number_value)})")
                             
                             if pd.notna(number_value):
-                                clean_num = str(number_value).strip()
-                                print(f"🔍 Clean number: '{clean_num}'")
-                                
-                                if clean_num.endswith('.0'):
-                                    clean_num = clean_num[:-2]
-                                    print(f"🔍 After removing .0: '{clean_num}'")
-                                
-                                digits_only = ''.join(filter(str.isdigit, clean_num))
-                                print(f"🔍 Digits only: '{digits_only}' (length: {len(digits_only)})")
-                                
-                                if len(digits_only) >= 7 and clean_num.lower() != 'nan':
-                                    all_numbers.append(clean_num)
+                                formatted_num = format_number_safely(number_value, country_code or '+91')
+                                if formatted_num and str(number_value).strip().lower() != 'nan':
+                                    all_numbers.append(formatted_num)
                                     excel_count += 1
                                     numbers_list.append({
                                         "sl": len(numbers_list) + 1,
-                                        "number": clean_num,
+                                        "number": formatted_num,
                                         "name": str(row.iloc[1]) if len(df.columns) > 1 and pd.notna(row.iloc[1]) else "-"
                                     })
-                                    print(f"✅ Added valid Excel number: {clean_num}")
+                                    print(f" Added valid Excel number: {formatted_num}")
                                 else:
-                                    print(f"⚠️ Skipped invalid Excel entry: '{clean_num}'")
+                                    invalid_numbers.append(str(number_value))
+                                    print(f" Skipped invalid Excel entry: '{number_value}'")
                             else:
-                                print(f"⚠️ NaN value in row {idx}")
+                                print(f" NaN value in row {idx}")
                 else:
-                    print("⚠️ Excel file is completely empty!")
+                    print(" Excel file is completely empty!")
                     
-                print(f"🔍 Total Excel numbers processed: {len([n for n in all_numbers if n])}")
+                print(f" Total Excel numbers processed: {len([n for n in all_numbers if n])}")
                 
             except Exception as e:
-                print(f"❌ Error reading Excel: {e}")
+                print(f" Error reading Excel: {e}")
                 import traceback
                 traceback.print_exc()
         else:
-            print("🔍 No Excel file uploaded")
+            print(" No Excel file uploaded")
 
-        print(f"🔍 Total valid numbers collected: {len(all_numbers)}")
-        print(f"🔍 All numbers before deduplication: {all_numbers}")
+        print(f" Total valid numbers collected: {len(all_numbers)}")
+        print(f" All numbers before deduplication: {all_numbers}")
 
-        # ✅ Remove duplicates if enabled
+        #  Remove duplicates if enabled
         if deduplicate:
             original_count = len(all_numbers)
             all_numbers = list(dict.fromkeys(all_numbers))  # Preserve order
-            print(f"🔍 After deduplication: {len(all_numbers)} (removed {original_count - len(all_numbers)})")
+            print(f" After deduplication: {len(all_numbers)} (removed {original_count - len(all_numbers)})")
 
-        # ✅ Convert to string for database storage
+        #  Convert to string for database storage
         combined_numbers = "\n".join(all_numbers)
-        print(f"🔍 Combined numbers for database: {repr(combined_numbers)}")
-        print(f"🔍 Combined numbers length: {len(combined_numbers)}")
+        print(f" Combined numbers for database: {repr(combined_numbers)}")
+        print(f" Combined numbers length: {len(combined_numbers)}")
 
-        # ✅ Save campaign WITH ATTACHMENT
+        #  Save campaign WITH ATTACHMENT
         try:
             campaign = WhatsAppCampaign.objects.create(
                 name=campaign_name,
                 message1=message_1,
                 message2=message_2,
                 excel_file=excel_file,
-                attachment=attachment,  # ✅ ADD: Save attachment
+                attachment=attachment,  #  ADD: Save attachment
                 numbers=combined_numbers,  # All numbers (manual + Excel)
                 country_code=country_code or '+91',  # Default country code
                 whatsapp_group=whatsapp_group if whatsapp_group else None,
@@ -482,27 +688,32 @@ def save_campaign(request):
                 safe_mode=safe_mode,
                 unsafe_mode=unsafe_mode,
                 swipe_after=int(swipe_after) if swipe_after else 2,
-                delay=int(delay) if delay else 5,
+                delay=max(1, int(delay)) if delay else 5,
+                batch_break_interval=max(1, int(request.POST.get('batch_break_interval', 15) or 15)),
+                break_duration=max(1, int(request.POST.get('break_duration', 3) or 3)),
                 schedule_time=schedule_time,
                 friendly_numbers=friendly_numbers,
+                send_as_caption=send_as_caption,
+                use_normal_spintax=use_normal_spintax,
+                use_ai_spintax=use_ai_spintax,
                 user=request.user
             )
 
-            # 🔍 DEBUG: Check what was actually saved
-            print(f"🔍 Campaign created with ID: {campaign.id}")
-            print(f"🔍 Campaign name saved: {campaign.name}")
-            print(f"🔍 Numbers saved to DB: {repr(campaign.numbers)}")
-            print(f"🔍 Numbers length in DB: {len(campaign.numbers) if campaign.numbers else 0}")
-            print(f"🔍 Attachment saved: {campaign.attachment.name if campaign.attachment else 'None'}")  # ✅ ADD: Debug attachment
+            #  DEBUG: Check what was actually saved
+            print(f" Campaign created with ID: {campaign.id}")
+            print(f" Campaign name saved: {campaign.name}")
+            print(f" Numbers saved to DB: {repr(campaign.numbers)}")
+            print(f" Numbers length in DB: {len(campaign.numbers) if campaign.numbers else 0}")
+            print(f" Attachment saved: {campaign.attachment.name if campaign.attachment else 'None'}")  #  ADD: Debug attachment
 
-            # 🔍 Re-fetch from database to double-check
+            #  Re-fetch from database to double-check
             saved_campaign = WhatsAppCampaign.objects.get(id=campaign.id)
-            print(f"🔍 Re-fetched from DB - numbers: {repr(saved_campaign.numbers)}")
-            print(f"🔍 Re-fetched from DB - numbers length: {len(saved_campaign.numbers) if saved_campaign.numbers else 0}")
-            print(f"🔍 Re-fetched from DB - attachment: {saved_campaign.attachment.name if saved_campaign.attachment else 'None'}")  # ✅ ADD: Debug attachment
+            print(f" Re-fetched from DB - numbers: {repr(saved_campaign.numbers)}")
+            print(f" Re-fetched from DB - numbers length: {len(saved_campaign.numbers) if saved_campaign.numbers else 0}")
+            print(f" Re-fetched from DB - attachment: {saved_campaign.attachment.name if saved_campaign.attachment else 'None'}")  #  ADD: Debug attachment
 
         except Exception as e:
-            print(f"❌ Error saving campaign: {e}")
+            print(f" Error saving campaign: {e}")
             import traceback
             traceback.print_exc()
             return render(request, 'index.html', {
@@ -511,9 +722,9 @@ def save_campaign(request):
                 'numbers_list': numbers_list
             })
 
-        print(f"🔍 Campaign {campaign.id} saved with {len(all_numbers)} numbers")
+        print(f" Campaign {campaign.id} saved with {len(all_numbers)} numbers")
 
-        # ✅ Assign WhatsApp account
+        #  Assign WhatsApp account
         if selected_accounts:
             try:
                 account = WhatsAppAccount.objects.filter(
@@ -522,12 +733,19 @@ def save_campaign(request):
                 if account:
                     campaign.whatsapp_account = account
                     campaign.save()
-                    print(f"🔍 Assigned WhatsApp account: {account.number}")
+                    print(f" Assigned WhatsApp account: {account.number}")
                 else:
-                    print("⚠️ No valid WhatsApp account found")
+                    print(" No valid WhatsApp account found")
             except Exception as e:
-                print(f"❌ Error assigning WhatsApp account: {e}")
+                print(f" Error assigning WhatsApp account: {e}")
 
+        if invalid_numbers:
+            from django.contrib import messages
+            invalid_str = ", ".join(invalid_numbers)
+            if len(invalid_str) > 80:
+                invalid_str = invalid_str[:77] + "..."
+            messages.warning(request, f"Filtered out {len(invalid_numbers)} fake/invalid numbers automatically: {invalid_str}")
+            
         return redirect('deploy_campaign', campaign_id=campaign.id)
 
     # GET request - show form
@@ -541,8 +759,13 @@ def save_campaign(request):
 def delete_campaign(request, campaign_id):
     campaign = get_object_or_404(WhatsAppCampaign, id=campaign_id, user=request.user)
     campaign.delete()
-    messages.success(request, "🗑️ Campaign deleted successfully.")
-    return redirect('index')  
+    messages.success(request, "Campaign deleted successfully.")
+    
+    # Redirect back to History page
+    referer = request.META.get('HTTP_REFERER')
+    if referer and 'history' in referer:
+        return redirect(referer)
+    return redirect('campaign_history')
 
 def kill_existing_chrome_processes(user_data_dir=None):
     for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
@@ -567,17 +790,17 @@ def send_campaign_messages(
 ):
     """Improved campaign message sender with Chrome browser"""
     
-    logger.info("🚀 Starting WhatsApp campaign with Chrome")
+    logger.info(" Starting WhatsApp campaign with Chrome")
     
     # Debug attachment path
     if attachment_path:
         if os.path.exists(attachment_path):
-            logger.info(f"📎 Attachment found: {attachment_path}")
+            logger.info(f" Attachment found: {attachment_path}")
         else:
-            logger.warning(f"⚠️ Attachment path not found: {attachment_path}")
+            logger.warning(f" Attachment path not found: {attachment_path}")
             attachment_path = None
     else:
-        logger.info("📝 No attachment for this campaign")
+        logger.info(" No attachment for this campaign")
     
     # Validate inputs
     if not campaign and not campaign_id:
@@ -632,7 +855,7 @@ def send_campaign_messages(
             page = browser.new_page()
             page.set_default_timeout(60000)
             
-            logger.info(f"🌐 Navigating to WhatsApp Web with Chrome...")
+            logger.info(f" Navigating to WhatsApp Web with Chrome...")
             page.goto("https://web.whatsapp.com", wait_until='networkidle')
             
             # Enhanced session validation
@@ -641,7 +864,7 @@ def send_campaign_messages(
             if not session_valid:
                 return {"success": False, "error": "session_expired"}
             
-            logger.info("✅ Session validated, starting message sending")
+            logger.info(" Session validated, starting message sending")
             
             success_count = 0
             failed_count = 0
@@ -652,15 +875,15 @@ def send_campaign_messages(
                     # Check for stop/pause signals
                     if campaign_id in active_campaigns:
                         if active_campaigns[campaign_id].get('stopped', False):
-                            logger.info("🛑 Campaign stopped by user")
+                            logger.info(" Campaign stopped by user")
                             break
                         
                         while active_campaigns[campaign_id].get('paused', False):
-                            time.sleep(2)
+                            time.sleep(random.uniform(1.5, 3.5))
                             if active_campaigns[campaign_id].get('stopped', False):
                                 break
                     
-                    logger.info(f"📱 Processing {phone_number} ({i}/{len(valid_numbers)})")
+                    logger.info(f" Processing {phone_number} ({i}/{len(valid_numbers)})")
                     update_status(campaign_id, phone_number, 'Processing')
                     
                     # Send first message with attachment
@@ -672,10 +895,10 @@ def send_campaign_messages(
                             
                             # Send second message if provided (without attachment)
                             if message2 and message2.strip():
-                                time.sleep(2)  # Brief pause between messages
+                                time.sleep(random.uniform(1.5, 3.5))  # Brief pause between messages
                                 success2 = send_message_to_number(page, phone_number, message2, campaign_id, None)
                                 if not success2:
-                                    logger.warning(f"⚠️ Second message failed for {phone_number}")
+                                    logger.warning(f" Second message failed for {phone_number}")
                         else:
                             failed_count += 1
                             update_status(campaign_id, phone_number, 'Failed')
@@ -684,11 +907,12 @@ def send_campaign_messages(
                     if i < len(valid_numbers):
                         delay = getattr(campaign, 'delay', 8) or 8
                         delay = max(delay, 5)  # Minimum 5 seconds
-                        logger.info(f"⏸️ Waiting {delay} seconds...")
-                        time.sleep(delay)
+                        human_delay = delay + random.uniform(2.5, 7.5)
+                        logger.info(f" Waiting {human_delay:.1f} seconds...")
+                        time.sleep(human_delay)
                 
                 except Exception as e:
-                    logger.error(f"❌ Error processing {phone_number}: {e}")
+                    logger.error(f" Error processing {phone_number}: {e}")
                     failed_count += 1
                     update_status(campaign_id, phone_number, 'Failed')
                     continue
@@ -705,11 +929,11 @@ def send_campaign_messages(
                 "total": len(valid_numbers)
             }
             
-            logger.info(f"📊 Campaign completed - Success: {success_count}, Failed: {failed_count}")
+            logger.info(f" Campaign completed - Success: {success_count}, Failed: {failed_count}")
             return result
             
         except Exception as e:
-            logger.error(f"❌ Campaign error: {e}")
+            logger.error(f" Campaign error: {e}")
             
             return {"success": False, "error": str(e)}
             
@@ -717,17 +941,17 @@ def send_campaign_messages(
             if browser:
                 try:
                     browser.close()
-                    logger.info("🔄 Chrome browser closed")
+                    logger.info(" Chrome browser closed")
                 except Exception as e:
-                    logger.warning(f"⚠️ Error closing browser: {e}")
+                    logger.warning(f" Error closing browser: {e}")
 
 
 
 def validate_whatsapp_session(page, whatsapp_account, timeout=60):
     """Enhanced session validation with better detection"""
     try:
-        logger.info("🔍 Validating WhatsApp session...")
-        time.sleep(5)  # Allow initial page load
+        logger.info(" Validating WhatsApp session...")
+        time.sleep(random.uniform(4.0, 7.0))  # Allow initial page load
         
         start_time = time.time()
         
@@ -749,7 +973,7 @@ def validate_whatsapp_session(page, whatsapp_account, timeout=60):
                 )
                 
                 if qr_found:
-                    logger.error("❌ QR code detected - session expired")
+                    logger.error(" QR code detected - session expired")
                     if whatsapp_account:
                         whatsapp_account.is_active = False
                         whatsapp_account.save()
@@ -772,97 +996,27 @@ def validate_whatsapp_session(page, whatsapp_account, timeout=60):
                 )
                 
                 if chat_found:
-                    logger.info("✅ WhatsApp session is valid")
+                    logger.info(" WhatsApp session is valid")
                     if whatsapp_account:
                         whatsapp_account.is_active = True
                         whatsapp_account.save()
                     return True
                 
                 # Wait and retry
-                time.sleep(2)
+                time.sleep(random.uniform(1.5, 3.5))
                 
             except Exception as e:
-                logger.warning(f"⚠️ Session validation error: {e}")
-                time.sleep(2)
+                logger.warning(f" Session validation error: {e}")
+                time.sleep(random.uniform(1.5, 3.5))
         
-        logger.error("❌ Session validation timeout")
+        logger.error(" Session validation timeout")
         return False
         
     except Exception as e:
-        logger.error(f"❌ Session validation failed: {e}")
+        logger.error(f" Session validation failed: {e}")
         return False
 
 
-def send_attachment(page, attachment_path):
-    """Send attachment with improved reliability"""
-    try:
-        print(f"DEBUG: Trying to send attachment: {attachment_path}")
-        
-        # Look for attachment button
-        attachment_button_selectors = [
-            '[data-testid="clip"]',
-            '[data-icon="clip"]',
-            'button[aria-label*="Attach" i]'
-        ]
-        
-        button_found = False
-        for selector in attachment_button_selectors:
-            try:
-                button = page.locator(selector).first
-                if button.is_visible():
-                    print(f"DEBUG: Found attachment button: {selector}")
-                    button.click()
-                    time.sleep(1)
-                    button_found = True
-                    break
-            except Exception as e:
-                print(f"DEBUG: Button {selector} failed: {str(e)}")
-                continue
-        
-        if not button_found:
-            print("DEBUG: No attachment button found")
-            return False
-        
-        # Upload file
-        try:
-            file_input = page.locator('input[type="file"]').first
-            print("DEBUG: Found file input, uploading...")
-            file_input.set_input_files(attachment_path)
-            print("DEBUG: File uploaded")
-        except Exception as e:
-            print(f"DEBUG: File upload failed: {str(e)}")
-            return False
-        
-        # Wait for file to process
-        time.sleep(3)
-        
-        # Send attachment
-        send_button_selectors = [
-            '[data-testid="send"]',
-            '[data-icon="send"]',
-            'button[aria-label*="Send" i]'
-        ]
-        
-        for selector in send_button_selectors:
-            try:
-                send_btn = page.locator(selector).first
-                if send_btn.is_visible():
-                    print(f"DEBUG: Found send button: {selector}")
-                    send_btn.click()
-                    time.sleep(2)
-                    print("DEBUG: Attachment sent successfully!")
-                    return True
-            except Exception as e:
-                print(f"DEBUG: Send button {selector} failed: {str(e)}")
-                continue
-        
-        print("DEBUG: No send button found")
-        return False
-        
-    except Exception as e:
-        print(f"DEBUG: Overall error: {str(e)}")
-        logger.error(f"❌ Attachment send error: {e}")
-        return False
 
 
 def process_campaign_background(campaign_id):
@@ -879,17 +1033,17 @@ def process_campaign_background(campaign_id):
         # Create WhatsApp account object if needed
         whatsapp_account = getattr(campaign, 'whatsapp_account', None)
         
-        # ✅ FIX: Get attachment path correctly
+        #  FIX: Get attachment path correctly
         attachment_path = None
         if campaign.attachment:
             try:
                 attachment_path = campaign.attachment.path
-                print(f"🔍 Attachment found: {attachment_path}")
+                print(f" Attachment found: {attachment_path}")
             except Exception as e:
-                print(f"❌ Error getting attachment path: {e}")
+                print(f" Error getting attachment path: {e}")
                 attachment_path = None
         else:
-            print("🔍 No attachment for this campaign")
+            print(" No attachment for this campaign")
         
         # Send messages
         result = send_campaign_messages(
@@ -897,7 +1051,7 @@ def process_campaign_background(campaign_id):
             valid_numbers=phone_numbers,
             message1=campaign.message1,
             message2=getattr(campaign, 'message2', None),
-            attachment_path=attachment_path,  # ✅ Now passes correct attachment path
+            attachment_path=attachment_path,  #  Now passes correct attachment path
             whatsapp_account=whatsapp_account,
             campaign_id=campaign_id
         )
@@ -910,10 +1064,10 @@ def process_campaign_background(campaign_id):
                 active_campaigns[campaign_id]['status'] = 'Failed'
                 active_campaigns[campaign_id]['error'] = result.get('error', 'Unknown error')
         
-        logger.info(f"🎉 Campaign {campaign_id} processed: {result}")
+        logger.info(f" Campaign {campaign_id} processed: {result}")
         
     except Exception as e:
-        logger.error(f"❌ Background campaign {campaign_id} failed: {e}")
+        logger.error(f" Background campaign {campaign_id} failed: {e}")
         if campaign_id in active_campaigns:
             active_campaigns[campaign_id]['status'] = 'Failed'
             active_campaigns[campaign_id]['error'] = str(e)
@@ -924,7 +1078,7 @@ def send_message_with_box(page, message_box, message):
     try:
         message_box.click()
         message_box.fill("")  # Clear any existing text
-        message_box.type(message)
+        message_box.type(message, delay=random.randint(40, 150))
         page.keyboard.press("Enter")
         return True
     except Exception as e:
@@ -937,7 +1091,7 @@ def send_message(page, message_box, message):
     try:
         message_box.click()
         message_box.fill("")  # Clear existing text
-        message_box.type(message)
+        message_box.type(message, delay=random.randint(40, 150))
         page.keyboard.press("Enter")
         return True
     except Exception as e:
@@ -945,117 +1099,6 @@ def send_message(page, message_box, message):
         return False
 
 
-def send_attachment(page, attachment_path):
-    """Direct WhatsApp file injection - bypasses all UI"""
-    try:
-        # Step 1: Force create multiple file inputs
-        page.evaluate('''
-            () => {
-                // Remove any existing file inputs first
-                document.querySelectorAll('input[type="file"]').forEach(input => input.remove());
-                
-                // Create multiple file inputs with different configurations
-                for (let i = 0; i < 3; i++) {
-                    const input = document.createElement('input');
-                    input.type = 'file';
-                    input.accept = '*/*';
-                    input.multiple = true;
-                    input.style.position = 'fixed';
-                    input.style.top = '-1000px';
-                    input.style.left = '-1000px';
-                    input.style.opacity = '0';
-                    input.style.pointerEvents = 'none';
-                    input.setAttribute('data-injected', 'true');
-                    document.body.appendChild(input);
-                }
-            }
-        ''')
-
-        time.sleep(0.5)
-
-        # Step 2: Upload to all inputs
-        file_inputs = page.locator('input[type="file"]').all()
-        uploaded = False
-
-        for file_input in file_inputs:
-            try:
-                file_input.set_input_files(attachment_path)
-                uploaded = True
-                break
-            except:
-                continue
-
-        if not uploaded:
-            return False
-
-        time.sleep(2)
-
-        # Step 3: Trigger WhatsApp's file processing
-        page.evaluate('''
-            () => {
-                const inputs = document.querySelectorAll('input[type="file"]');
-                inputs.forEach(input => {
-                    if (input.files && input.files.length > 0) {
-                        // Trigger change event
-                        const event = new Event('change', { bubbles: true });
-                        input.dispatchEvent(event);
-                        
-                        // Try input event too
-                        const inputEvent = new Event('input', { bubbles: true });
-                        input.dispatchEvent(inputEvent);
-                    }
-                });
-            }
-        ''')
-
-        time.sleep(3)
-
-        # Step 4: Look for and click send button aggressively
-        send_attempts = 0
-        max_attempts = 10
-
-        while send_attempts < max_attempts:
-            try:
-                # Try all possible send button selectors
-                send_selectors = [
-                    '[data-testid="send"]',
-                    '[data-icon="send"]',
-                    'button[aria-label*="Send"]',
-                    'span[data-testid="send"]',
-                    'div[data-testid="send"]',
-                    '[role="button"][aria-label*="Send"]'
-                ]
-
-                for selector in send_selectors:
-                    elements = page.locator(selector).all()
-                    for element in elements:
-                        try:
-                            if element.is_visible():
-                                element.click()
-                                time.sleep(1)
-                                return True
-                        except:
-                            continue
-
-                send_attempts += 1
-                time.sleep(0.5)
-
-            except:
-                send_attempts += 1
-                continue
-
-        try:
-            page.keyboard.press('Enter')
-            time.sleep(1)
-            return True
-        except:
-            pass
-
-        return False
-        
-    except Exception as e:
-        logger.error(f"❌ Attachment error: {e}")
-        return False
 
 
 
@@ -1090,13 +1133,13 @@ async def find_best_drop_target(page):
             if element:
                 is_visible = await element.is_visible()
                 if is_visible:
-                    print(f"✅ Selected drop target: {selector}")
+                    print(f" Selected drop target: {selector}")
                     return element
         except Exception as e:
-            print(f"⚠️ Selector {selector} failed: {e}")
+            print(f" Selector {selector} failed: {e}")
             continue
 
-    print("⚠️ Using body as fallback drop target")
+    print(" Using body as fallback drop target")
     return await page.query_selector('body')
 
 
@@ -1122,7 +1165,7 @@ async def perform_drag_drop(page, file_path, drop_target):
             }
             mime_type = mime_map.get(ext, 'application/octet-stream')
 
-        print(f"📁 File: {file_name} ({mime_type})")
+        print(f" File: {file_name} ({mime_type})")
 
         # Execute drag and drop simulation
         result = await page.evaluate("""
@@ -1206,94 +1249,16 @@ async def perform_drag_drop(page, file_path, drop_target):
         return result
 
     except Exception as e:
-        print(f"❌ Drag and drop execution failed: {e}")
+        print(f" Drag and drop execution failed: {e}")
         return False
 
 
-async def send_attachment_playwright_native(page, attachment_path):
-    """
-    Alternative method using Playwright's native drag and drop.
-    """
-    try:
-        print(f"📤 Native Playwright drag & drop: {os.path.basename(attachment_path)}")
-
-        # Create temporary file input
-        await page.evaluate("""
-        () => {
-            const existing = document.querySelector('#temp-file-input');
-            if (existing) existing.remove();
-
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.id = 'temp-file-input';
-            input.accept = 'image/*,video/*,application/*';
-            input.multiple = false;
-            input.style.position = 'absolute';
-            input.style.left = '-9999px';
-            input.style.top = '-9999px';
-            document.body.appendChild(input);
-        }
-        """)
-
-        await page.set_input_files('#temp-file-input', attachment_path)
-
-        # Simulate drag & drop from temp input to drop target
-        result = await page.evaluate("""
-        () => {
-            const input = document.querySelector('#temp-file-input');
-            const file = input.files[0];
-
-            if (!file) return false;
-
-            const targets = [
-                '[data-testid="conversation-panel"]',
-                '[data-testid="main"]',
-                'div[contenteditable="true"]',
-                'main',
-                'body'
-            ];
-
-            let dropTarget = null;
-            for (const selector of targets) {
-                dropTarget = document.querySelector(selector);
-                if (dropTarget && dropTarget.offsetParent !== null) break;
-            }
-
-            if (!dropTarget) return false;
-
-            const dataTransfer = new DataTransfer();
-            dataTransfer.items.add(file);
-
-            const dropEvent = new DragEvent('drop', {
-                bubbles: true,
-                cancelable: true,
-                dataTransfer: dataTransfer
-            });
-
-            dropTarget.dispatchEvent(dropEvent);
-
-            input.remove();
-            return true;
-        }
-        """)
-
-        if result:
-            print("✅ Native drag and drop completed")
-            await page.wait_for_timeout(3000)
-            return True
-        else:
-            print("❌ Native method failed")
-            return False
-
-    except Exception as e:
-        print(f"❌ Native method error: {e}")
-        return False
 
 
 # Additional helper function to debug page structure
 def debug_page_elements(driver):
     """Helper function to inspect page elements for debugging"""
-    print("🔍 DEBUG: Analyzing page structure...")
+    print(f" DEBUG: Analyzing page structure...")
    
     try:
         # Get page title
@@ -1341,7 +1306,7 @@ def debug_page_elements(driver):
 # Additional helper function to debug page structure
 def debug_page_elements(driver):
     """Helper function to inspect page elements for debugging"""
-    print("🔍 DEBUG: Analyzing page structure...")
+    print(f" DEBUG: Analyzing page structure...")
    
     try:
         # Get page title
@@ -1426,8 +1391,9 @@ def create_unique_driver(campaign_id, user_id):
     """Create a Chrome driver with unique user data directory"""
     import tempfile
     import uuid
+    from selenium.webdriver.chrome.service import Service
+    from webdriver_manager.chrome import ChromeDriverManager
     
-
     # Create unique temporary directory for this campaign
     unique_id = f"{user_id}_{campaign_id}_{int(time.time())}_{uuid.uuid4().hex[:8]}"
     temp_dir = tempfile.mkdtemp(prefix=f"whatsapp_campaign_{unique_id}_")
@@ -1485,11 +1451,11 @@ def send_message_to_number(page, phone_number, message, campaign_id, attachment_
     try:
         # Navigate to chat
         chat_url = f"https://web.whatsapp.com/send?phone={phone_number}"
-        logger.info(f"🔗 Navigating to: {chat_url}")
+        logger.info(f" Navigating to: {chat_url}")
         page.goto(chat_url, wait_until='networkidle', timeout=30000)
         
         # Wait for chat interface
-        time.sleep(5)
+        time.sleep(random.uniform(4.0, 7.0))
         
         # Check if chat loaded properly
         chat_selectors = [
@@ -1502,19 +1468,19 @@ def send_message_to_number(page, phone_number, message, campaign_id, attachment_
         for selector in chat_selectors:
             try:
                 if page.wait_for_selector(selector, timeout=10000):
-                    logger.info(f"✅ Chat interface ready - found: {selector}")
+                    logger.info(f" Chat interface ready - found: {selector}")
                     chat_ready = True
                     break
             except:
                 continue
         
         if not chat_ready:
-            logger.error(f"❌ Chat interface not ready for {phone_number}")
+            logger.error(f" Chat interface not ready for {phone_number}")
             return False
         
         # Send attachment first if provided
         if attachment_path and os.path.exists(attachment_path):
-            logger.info(f"📎 Sending attachment to {phone_number}")
+            logger.info(f" Sending attachment to {phone_number}")
             try:
                 # Click attachment button (paperclip icon)
                 attachment_selectors = [
@@ -1532,15 +1498,15 @@ def send_message_to_number(page, phone_number, message, campaign_id, attachment_
                     try:
                         attachment_button = page.wait_for_selector(selector, timeout=5000)
                         if attachment_button:
-                            logger.info(f"✅ Found attachment button: {selector}")
+                            logger.info(f" Found attachment button: {selector}")
                             break
                     except:
                         continue
                 
                 if attachment_button:
                     attachment_button.click()
-                    logger.info("🔗 Clicked attachment button")
-                    time.sleep(2)
+                    logger.info(" Clicked attachment button")
+                    time.sleep(random.uniform(1.5, 3.5))
                     
                     # Look for file input
                     file_input_selectors = [
@@ -1553,7 +1519,7 @@ def send_message_to_number(page, phone_number, message, campaign_id, attachment_
                         try:
                             file_input = page.wait_for_selector(selector, timeout=5000)
                             if file_input:
-                                logger.info(f"✅ Found file input: {selector}")
+                                logger.info(f" Found file input: {selector}")
                                 break
                         except:
                             continue
@@ -1561,8 +1527,8 @@ def send_message_to_number(page, phone_number, message, campaign_id, attachment_
                     if file_input:
                         # Upload the file
                         file_input.set_input_files(attachment_path)
-                        logger.info(f"📤 File uploaded: {attachment_path}")
-                        time.sleep(3)  # Wait for file to process
+                        logger.info(f" File uploaded: {attachment_path}")
+                        time.sleep(random.uniform(2.0, 4.5))  # Wait for file to process
                         
                         # Look for send button in attachment dialog
                         send_selectors = [
@@ -1577,28 +1543,28 @@ def send_message_to_number(page, phone_number, message, campaign_id, attachment_
                             try:
                                 send_button = page.wait_for_selector(selector, timeout=10000)
                                 if send_button:
-                                    logger.info(f"✅ Found attachment send button: {selector}")
+                                    logger.info(f" Found attachment send button: {selector}")
                                     break
                             except:
                                 continue
                         
                         if send_button:
                             send_button.click()
-                            logger.info(f"✅ Attachment sent to {phone_number}")
-                            time.sleep(3)  # Wait for attachment to be sent
+                            logger.info(f" Attachment sent to {phone_number}")
+                            time.sleep(random.uniform(2.0, 4.5))  # Wait for attachment to be sent
                         else:
-                            logger.warning(f"⚠️ Could not find attachment send button for {phone_number}")
+                            logger.warning(f" Could not find attachment send button for {phone_number}")
                     else:
-                        logger.warning(f"⚠️ Could not find file input for {phone_number}")
+                        logger.warning(f" Could not find file input for {phone_number}")
                 else:
-                    logger.warning(f"⚠️ Could not find attachment button for {phone_number}")
+                    logger.warning(f" Could not find attachment button for {phone_number}")
                     
             except Exception as e:
-                logger.warning(f"⚠️ Attachment failed for {phone_number}: {e}")
+                logger.warning(f" Attachment failed for {phone_number}: {e}")
         
         # Send text message if provided
         if message and message.strip():
-            logger.info(f"💬 Sending text message to {phone_number}")
+            logger.info(f" Sending text message to {phone_number}")
             
             # Find message input
             message_input = None
@@ -1612,7 +1578,7 @@ def send_message_to_number(page, phone_number, message, campaign_id, attachment_
                 try:
                     message_input = page.wait_for_selector(selector, timeout=5000)
                     if message_input:
-                        logger.info(f"✅ Found message input: {selector}")
+                        logger.info(f" Found message input: {selector}")
                         break
                 except:
                     continue
@@ -1621,18 +1587,18 @@ def send_message_to_number(page, phone_number, message, campaign_id, attachment_
                 # Send the message
                 message_input.click()
                 message_input.fill("")  # Clear any existing text
-                message_input.type(message)
+                message_input.type(message, delay=random.randint(40, 150))
                 page.keyboard.press("Enter")
-                logger.info(f"✅ Message sent successfully to {phone_number}")
+                logger.info(f" Message sent successfully to {phone_number}")
                 return True
             else:
-                logger.error(f"❌ Could not find message input for {phone_number}")
+                logger.error(f" Could not find message input for {phone_number}")
                 return False
         
         return True  # Return True if only attachment was sent
         
     except Exception as e:
-        logger.error(f"❌ Error sending to {phone_number}: {e}")
+        logger.error(f" Error sending to {phone_number}: {e}")
         return False
 
 
@@ -1653,23 +1619,23 @@ def wait_for_chat_interface(page, timeout=30000):
                 try:
                     element = page.locator(indicator).first
                     if element.is_visible():
-                        logger.info(f"✅ Chat interface ready - found: {indicator}")
+                        logger.info(f" Chat interface ready - found: {indicator}")
                         return True
                 except:
                     continue
             
-            time.sleep(1)
+            time.sleep(random.uniform(0.8, 1.8))
         
-        logger.warning("⚠️ Chat interface not ready within timeout")
+        logger.warning(" Chat interface not ready within timeout")
         return False
         
     except Exception as e:
-        logger.error(f"❌ Error waiting for chat interface: {e}")
+        logger.error(f" Error waiting for chat interface: {e}")
         return False
 def find_message_input_specific(page):
     """Find ONLY the message composition input, NOT search or other inputs"""
     try:
-        logger.info("🔍 Looking for message composition input specifically...")
+        logger.info(" Looking for message composition input specifically...")
         
         # Strategy 1: Most specific WhatsApp message compose selectors
         compose_specific_selectors = [
@@ -1692,7 +1658,7 @@ def find_message_input_specific(page):
                     if element.is_visible() and element.is_enabled():
                         # Double-check it's not in header/search area
                         if not is_in_search_area(element):
-                            logger.info(f"✅ Found message input: {selector}")
+                            logger.info(f" Found message input: {selector}")
                             return element
             except Exception as e:
                 logger.debug(f"Selector {selector} failed: {e}")
@@ -1713,7 +1679,7 @@ def find_message_input_specific(page):
                     inputs_in_footer = footer.locator('div[contenteditable="true"]').all()
                     for input_elem in inputs_in_footer:
                         if input_elem.is_visible() and input_elem.is_enabled():
-                            logger.info(f"✅ Found message input inside footer: {footer_selector}")
+                            logger.info(f" Found message input inside footer: {footer_selector}")
                             return input_elem
         except Exception as e:
             logger.debug(f"Footer strategy failed: {e}")
@@ -1733,7 +1699,7 @@ def find_message_input_specific(page):
                         if bounding_box and bounding_box['y'] > bottom_threshold:
                             # Additional check - not in search area
                             if not is_in_search_area(element):
-                                logger.info(f"✅ Found message input via position (y={bounding_box['y']})")
+                                logger.info(f" Found message input via position (y={bounding_box['y']})")
                                 return element
         except Exception as e:
             logger.debug(f"Position strategy failed: {e}")
@@ -1751,12 +1717,12 @@ def find_message_input_specific(page):
                     if area.is_visible():
                         # Click in the center of compose area
                         area.click()
-                        time.sleep(1)
+                        time.sleep(random.uniform(0.8, 1.8))
                         
                         # Try finding input again after activation
                         activated_input = area.locator('div[contenteditable="true"]').first
                         if activated_input.is_visible():
-                            logger.info(f"✅ Found input after clicking compose area")
+                            logger.info(f" Found input after clicking compose area")
                             return activated_input
                 except Exception as e:
                     logger.debug(f"Click activation failed for {area_selector}: {e}")
@@ -1764,11 +1730,11 @@ def find_message_input_specific(page):
         except Exception as e:
             logger.debug(f"Click activation strategy failed: {e}")
         
-        logger.error("❌ Could not find message composition input")
+        logger.error(" Could not find message composition input")
         return None
         
     except Exception as e:
-        logger.error(f"❌ Error finding message input: {e}")
+        logger.error(f" Error finding message input: {e}")
         return None
 
 
@@ -1838,7 +1804,7 @@ def find_message_input_reliable(page):
             try:
                 element = page.locator(selector).first
                 if element.is_visible() and element.is_enabled():
-                    logger.info(f"✅ Found message input: {selector}")
+                    logger.info(f" Found message input: {selector}")
                     return element
             except:
                 continue
@@ -1848,7 +1814,7 @@ def find_message_input_reliable(page):
             footer_inputs = page.locator('footer div[contenteditable="true"]').all()
             for element in footer_inputs:
                 if element.is_visible() and element.is_enabled():
-                    logger.info("✅ Found message input in footer")
+                    logger.info(" Found message input in footer")
                     return element
         except:
             pass
@@ -1863,7 +1829,7 @@ def find_message_input_reliable(page):
                     if bounding_box:
                         viewport = page.viewport_size
                         if viewport and bounding_box['y'] > viewport['height'] * 0.7:
-                            logger.info("✅ Found message input via position detection")
+                            logger.info(" Found message input via position detection")
                             return element
         except:
             pass
@@ -1881,14 +1847,14 @@ def find_message_input_reliable(page):
                     compose_area = page.locator(selector).first
                     if compose_area.is_visible():
                         compose_area.click()
-                        time.sleep(1)
+                        time.sleep(random.uniform(0.8, 1.8))
                         
                         # Try finding input again after click
                         for modern_selector in modern_selectors[:3]:
                             try:
                                 element = page.locator(modern_selector).first
                                 if element.is_visible():
-                                    logger.info(f"✅ Found input after clicking compose: {modern_selector}")
+                                    logger.info(f" Found input after clicking compose: {modern_selector}")
                                     return element
                             except:
                                 continue
@@ -1897,11 +1863,11 @@ def find_message_input_reliable(page):
         except:
             pass
         
-        logger.error("❌ Could not find message input with any strategy")
+        logger.error(" Could not find message input with any strategy")
         return None
         
     except Exception as e:
-        logger.error(f"❌ Error finding message input: {e}")
+        logger.error(f" Error finding message input: {e}")
         return None
 
 # ------------------------------------------
@@ -1912,24 +1878,24 @@ def send_message(campaign, valid_numbers, message1, message2, attachment_path, w
     try:
         user_data_dir = whatsapp_account.session_path if whatsapp_account and whatsapp_account.session_path else None
         if not user_data_dir or not os.path.exists(user_data_dir):
-            print("❌ No valid session path found. Aborting.")
+            print(" No valid session path found. Aborting.")
             return
 
-        print(f"🚀 Launching WebDriver with session: {user_data_dir}")
+        print(f" Launching WebDriver with session: {user_data_dir}")
         driver = create_webdriver(user_data_dir=user_data_dir)
         driver.get("https://web.whatsapp.com")
-        time.sleep(5)
+        time.sleep(random.uniform(4.0, 7.0))
 
         WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.ID, "side"))
         )
-        print("✅ WhatsApp Web loaded with existing session")
+        print(" WhatsApp Web loaded with existing session")
 
         success_count, failed_numbers = 0, []
 
         for number in valid_numbers:
             try:
-                print(f"📤 Sending to {number}")
+                print(f" Sending to {number}")
                 driver.get(f"https://web.whatsapp.com/send?phone={number}")
 
                 msg_box = WebDriverWait(driver, 25).until(
@@ -1947,15 +1913,15 @@ def send_message(campaign, valid_numbers, message1, message2, attachment_path, w
                 time.sleep(random.uniform(3, 6))
 
             except Exception as e:
-                print(f"❌ Failed to send to {number}: {e}")
+                print(f" Failed to send to {number}: {e}")
                 failed_numbers.append(number)
 
-        print(f"✅ Sent: {success_count} | ❌ Failed: {len(failed_numbers)}")
+        print(f" Sent: {success_count} |  Failed: {len(failed_numbers)}")
         campaign.is_sent = True
         campaign.save()
 
     except Exception as e:
-        print(f"❌ Background error: {e}")
+        print(f" Background error: {e}")
     finally:
         if driver:
             try:
@@ -1968,19 +1934,19 @@ def send_message(campaign, valid_numbers, message1, message2, attachment_path, w
             except:
                 pass
 
-def send_attachment_playwright(page, attachment_path):
+def send_attachment_playwright(page, attachment_path, caption_message=None):
     """Send attachment using Playwright with explicit file type handling to prevent sticker conversion"""
     try:
         if not os.path.exists(attachment_path):
-            logger.error(f"❌ Attachment file not found: {attachment_path}")
+            logger.error(f" Attachment file not found: {attachment_path}")
             return False
  
         file_size = os.path.getsize(attachment_path)
         if file_size > 100 * 1024 * 1024:
-            logger.error(f"❌ File too large: {file_size} bytes")
+            logger.error(f" File too large: {file_size} bytes")
             return False
  
-        logger.info(f"📎 Preparing to send attachment: {attachment_path}")
+        logger.info(f" Preparing to send attachment: {attachment_path}")
  
         # Get file information
         file_path = Path(attachment_path)
@@ -2006,10 +1972,12 @@ def send_attachment_playwright(page, attachment_path):
             mime_type = mime_map.get(file_extension, 'application/octet-stream')
  
         is_media = mime_type.startswith('image/') or mime_type.startswith('video/')
-        logger.info(f"📁 File: {file_name}, Extension: {file_extension}, MIME: {mime_type}, Is Media: {is_media}")
+        logger.info(f" File: {file_name}, Extension: {file_extension}, MIME: {mime_type}, Is Media: {is_media}")
  
         # Find attachment button
         attachment_selectors = [
+            'span[data-icon="plus-rounded"]',
+            'span[data-icon="plus"]',
             'span[data-icon="attach-menu-plus"]',
             'div[title="Attach"]',
             'div[aria-label="Attach"]',
@@ -2021,52 +1989,40 @@ def send_attachment_playwright(page, attachment_path):
                 page.wait_for_selector(selector, state='visible', timeout=5000)
                 attachment_button = page.query_selector(selector)
                 if attachment_button and attachment_button.is_visible():
-                    logger.info(f"✅ Found attachment button: {selector}")
+                    logger.info(f" Found attachment button: {selector}")
                     break
             except Exception as e:
                 logger.debug(f"Selector {selector} failed: {str(e)}")
                 continue
  
         if not attachment_button:
-            logger.error("❌ Attachment button not found")
+            logger.error(" Attachment button not found")
             return False
  
-        logger.info("📎 Clicking attachment button...")
-        
-        # Determine the target menu item locator
-        if is_media:
-            target_btn = page.locator('[data-testid="attach-image"], span:has-text("Photos & videos"), span:has-text("Photos")').first
-        else:
-            target_btn = page.locator('[data-testid="attach-document"], span:has-text("Document")').first
-
-        # Click attachment button
-        attachment_button.click(force=True, delay=100)
-        target_btn.wait_for(state='visible', timeout=5000)
-
-        # Trigger native OS file chooser using robust menu selectors
+        logger.info(" Clicking attachment button...")
+        attachment_button.click()
+        # Click the visual button in the menu and intercept the file dialog
         try:
-            page.wait_for_timeout(1000) # Wait for menu to animate in
-            
-            # Using Playwright's robust text-engine OR chaining to avoid CSS hierarchy issues
-            if is_media:
-                menu_item = page.locator('text="Photos & videos"').or_(page.locator('text="Photos"')).or_(page.locator('[data-testid="attach-image"]')).first
-            else:
-                menu_item = page.locator('text="Document"').or_(page.locator('[data-testid="attach-document"]')).first
-                
-            # Click the menu item and catch the OS file dialog
-            with page.expect_file_chooser(timeout=10000) as fc_info:
-                # Use click with force to bypass overlays
-                menu_item.click(force=True)
-                
+            with page.expect_file_chooser(timeout=5000) as fc_info:
+                if is_media:
+                    logger.info(" Clicking 'Photos & videos' menu option...")
+                    # Click the menu item using ARIA labels (WhatsApp removed data-testids)
+                    menu_item = page.locator('button[aria-label="Photos & videos"], [role="menuitem"][aria-label="Photos & videos"], [data-testid="attach-image"]').first
+                    menu_item.click()
+                else:
+                    logger.info(" Clicking 'Document' menu option...")
+                    # Click the menu item using ARIA labels (WhatsApp removed data-testids)
+                    menu_item = page.locator('button[aria-label="Document"], [role="menuitem"][aria-label="Document"], [data-testid="attach-document"]').first
+                    menu_item.click()
+                    
+            logger.info(" Intercepted file chooser, injecting file...")
             file_chooser = fc_info.value
-            logger.info("Uploading file via native file chooser...")
             file_chooser.set_files(attachment_path)
-            logger.info(f"File uploaded successfully: {attachment_path}")
-            
+            logger.info(f" File injected: {attachment_path}")
         except Exception as e:
-            logger.error(f"Error during file chooser interaction: {str(e)}")
+            logger.error(f" Error during menu click or file chooser interception: {str(e)}")
             return False
-        page.wait_for_timeout(5000)  # Allow file processing
+        page.wait_for_timeout(random.randint(2500, 7000))  # Allow file processing
  
         # Verify file preview if media
         if is_media:
@@ -2074,17 +2030,33 @@ def send_attachment_playwright(page, attachment_path):
                 preview_selector = 'img[data-testid="image-preview"], [data-testid="media-preview"], video'
                 page.wait_for_selector(preview_selector, state='visible', timeout=5000)
                 if page.query_selector(preview_selector):
-                    logger.info("✅ Media preview detected, file uploaded correctly")
+                    logger.info(" Media preview detected, file uploaded correctly")
                 else:
-                    logger.warning("⚠️ No media preview detected")
+                    logger.warning(" No media preview detected")
             except Exception as e:
-                logger.warning(f"⚠️ Error checking media preview: {str(e)}")
+                logger.warning(f" Error checking media preview: {str(e)}")
  
-        # Click send button
-        return click_send_button(page)
+        # Type caption if provided and press Enter
+        if caption_message and caption_message.strip():
+            logger.info(" Typing message as attachment caption...")
+            message_lines = caption_message.splitlines()
+            for j, line in enumerate(message_lines):
+                if line.strip():
+                    page.keyboard.type(line, delay=random.randint(35, 110))
+                if j < len(message_lines) - 1:
+                    page.keyboard.down('Shift')
+                    page.keyboard.press('Enter')
+                    page.keyboard.up('Shift')
+            page.wait_for_timeout(random.randint(400, 800))
+
+        # Press Enter to send attachment (bypassing broken click buttons)
+        logger.info(" Pressing Enter to send attachment...")
+        page.keyboard.press('Enter')
+        page.wait_for_timeout(random.randint(1500, 3000))
+        return True
  
     except Exception as e:
-        logger.error(f"❌ Exception during attachment send: {str(e)}")
+        logger.error(f" Exception during attachment send: {str(e)}")
         logger.error(traceback.format_exc())
         return False
  
@@ -2105,22 +2077,22 @@ def click_send_button(page):
                 page.wait_for_selector(selector, state='visible', timeout=5000)
                 send_button = page.query_selector(selector)
                 if send_button and send_button.is_visible() and send_button.is_enabled():
-                    logger.info(f"✅ Clicking send button: {selector}")
+                    logger.info(f" Clicking send button: {selector}")
                     send_button.click()
-                    page.wait_for_timeout(2000)  # Allow send to complete
+                    page.wait_for_timeout(random.randint(1500, 3000))  # Allow send to complete
                     return True
             except Exception as e:
                 logger.debug(f"Send button selector {selector} failed: {str(e)}")
                 continue
  
         # Fallback: Try Enter key
-        logger.info("🔄 Using Enter key as fallback")
+        logger.info(" Using Enter key as fallback")
         page.keyboard.press('Enter')
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(random.randint(1500, 3000))
         return True
  
     except Exception as e:
-        logger.error(f"❌ Error clicking send button: {str(e)}")
+        logger.error(f" Error clicking send button: {str(e)}")
         return False
     
     
@@ -2140,26 +2112,26 @@ def click_send_button(page):
             try:
                 send_button = page.query_selector(selector)
                 if send_button and send_button.is_visible() and send_button.is_enabled():
-                    logger.info(f"✅ Clicking send button: {selector}")
+                    logger.info(f" Clicking send button: {selector}")
                     send_button.click()
-                    time.sleep(2)  # Allow send to complete
+                    time.sleep(random.uniform(1.5, 3.5))  # Allow send to complete
                     return True
             except Exception as e:
                 logger.debug(f"Send button selector {selector} failed: {str(e)}")
                 continue
 
         # Fallback: Try Enter key
-        logger.info("🔄 Using Enter key as fallback")
+        logger.info(" Using Enter key as fallback")
         page.keyboard.press('Enter')
-        time.sleep(2)
+        time.sleep(random.uniform(1.5, 3.5))
         return True
 
     except Exception as e:
-        logger.error(f"❌ Error clicking send button: {str(e)}")
+        logger.error(f" Error clicking send button: {str(e)}")
         return False
 
 
-def send_message_to_number(page, phone_number, message, campaign_id, attachment_path=None):
+def send_message_to_number(page, phone_number, message, campaign_id, attachment_path=None, send_as_caption=True, message2=None):
     """Send message to a specific phone number using Playwright"""
     try:
         update_status(campaign_id, phone_number, 'Processing')
@@ -2167,56 +2139,263 @@ def send_message_to_number(page, phone_number, message, campaign_id, attachment_
         # Clean phone number
         clean_number = ''.join(filter(str.isdigit, phone_number))
         if not clean_number:
-            logger.error(f"❌ Invalid phone number: {phone_number}")
+            logger.error(f" Invalid phone number: {phone_number}")
             update_status(campaign_id, phone_number, 'Invalid')
             return False
         
-        # Open chat with the number
-        whatsapp_url = f"https://web.whatsapp.com/send?phone={clean_number}"
-        logger.info(f"🔗 Opening chat: {whatsapp_url}")
+        # --- NEW CHAT UI NAVIGATION ---
+        logger.info(f" Initiating New Chat UI Search for {clean_number}...")
         
-        try:
-            page.goto(whatsapp_url, timeout=30000)
-            page.wait_for_load_state('networkidle', timeout=30000)
-        except PlaywrightTimeoutError:
-            logger.error(f"❌ Timeout loading WhatsApp for {phone_number}")
-            update_status(campaign_id, phone_number, 'Failed')
-            return False
+        # 1. Click New Chat button with retries & human pre-action pause
+        time.sleep(random.uniform(0.8, 1.8))
+        new_chat_clicked = False
+        new_chat_selectors = [
+            'div[title="New chat"]',
+            'button[aria-label="New chat"]',
+            'span[data-icon="chat"]'
+        ]
         
-        # Wait for chat to load - check for either message box or invalid number indicator
-        try:
-            # Wait for either message input or error indicator
-            page.wait_for_selector('div[contenteditable="true"][data-tab="10"]', timeout=15000)
-        except PlaywrightTimeoutError:
-            # Check if it's an invalid number
-            try:
-                invalid_selectors = [
-                    'div[data-testid="invalid-phone-number"]',
-                    'div:has-text("Phone number shared via url is invalid")',
-                    'div:has-text("couldn\'t be reached")'
-                ]
-                
-                for selector in invalid_selectors:
-                    if page.query_selector(selector):
-                        logger.warning(f"⚠️ Invalid phone number: {phone_number}")
-                        update_status(campaign_id, phone_number, 'Invalid')
-                        return False
-            except:
-                pass
+        for attempt in range(3):
+            for selector in new_chat_selectors:
+                try:
+                    if page.locator(selector).first.is_visible(timeout=2000):
+                        logger.info(f" Clicking 'New Chat' button using selector: {selector} (Attempt {attempt+1})")
+                        human_click(page, selector)
+                        new_chat_clicked = True
+                        break
+                except Exception as e:
+                    logger.debug(f" New Chat selector '{selector}' failed attempt {attempt+1}: {str(e)}")
+                    continue
+            if new_chat_clicked:
+                break
+            time.sleep(1.0)
             
-            logger.error(f"❌ Could not load chat for {phone_number}")
-            update_status(campaign_id, phone_number, 'Failed')
+        if not new_chat_clicked:
+            error_reason = "Failed to click 'New Chat' button: Element not found or not clickable after 3 attempts."
+            logger.error(f" [{phone_number}] {error_reason}")
+            update_status(campaign_id, phone_number, 'Failed', error_reason)
+            return False
+            
+        logger.info(f" [{phone_number}] 'New Chat' button clicked successfully.")
+        
+        # 2. Wait for New Chat panel & Search Bar to load dynamically
+        textbox_selectors = [
+            'input[placeholder*="Search name"]',
+            'input[aria-label*="Search name"]',
+            'div[contenteditable="true"][title="Search name or number"]',
+            'div[contenteditable="true"][data-tab="3"]',
+            'input[data-tab="3"]',
+            'label div[contenteditable="true"]'
+        ]
+        
+        search_box = None
+        for tb_sel in textbox_selectors:
+            try:
+                el = page.wait_for_selector(tb_sel, state='visible', timeout=4000)
+                if el:
+                    search_box = el
+                    logger.info(f" [{phone_number}] Found search bar with selector '{tb_sel}'.")
+                    break
+            except Exception as e:
+                logger.debug(f" Search bar selector '{tb_sel}' failed: {str(e)}")
+                continue
+                
+        if not search_box:
+            error_reason = "Failed to load New Chat search bar: Search input element did not appear in sidebar."
+            logger.error(f" [{phone_number}] {error_reason}")
+            update_status(campaign_id, phone_number, 'Failed', error_reason)
+            page.keyboard.press("Escape")
+            return False
+            
+        logger.info(f" [{phone_number}] New Chat search bar loaded successfully.")
+        
+        # 3. Select Search Bar & Type Phone Number (with realistic human pauses)
+        try:
+            time.sleep(random.uniform(0.5, 1.2))
+            try:
+                search_box.focus()
+            except Exception:
+                search_box.click(force=True)
+                
+            time.sleep(0.4)
+            page.keyboard.press('Control+a')
+            page.keyboard.press('Backspace')
+            time.sleep(0.4)
+            
+            # Type with realistic human hesitations
+            for char in clean_number:
+                page.keyboard.type(char, delay=random.randint(60, 160))
+                if random.random() < 0.15:  # Occasional human hesitation
+                    time.sleep(random.uniform(0.2, 0.5))
+                    
+            logger.info(f" [{phone_number}] Typed phone number {clean_number} into search bar successfully.")
+        except Exception as e:
+            error_reason = f"Failed to type phone number into search bar: {str(e)}"
+            logger.error(f" [{phone_number}] {error_reason}")
+            update_status(campaign_id, phone_number, 'Failed', error_reason)
+            page.keyboard.press("Escape")
+            return False
+            
+        # 4. Wait for Search Results & Select Contact (with Double-Check & Option 1 Recovery)
+        # 4. Wait for Search Results & Select Contact (Maximum Effort First)
+        logger.info(f" [{phone_number}] Giving search results breathing space to load...")
+        time.sleep(random.uniform(4.0, 5.5))
+
+        # Matching by last 8 digits handles WhatsApp's formatted numbers (+91 80758 21508)
+        short_number = clean_number[-8:] if len(clean_number) >= 8 else clean_number
+        
+        contact_opened = False
+        for attempt in range(3):
+            logger.info(f" [{phone_number}] Attempting to open contact chat (Attempt {attempt+1}/3)...")
+            
+            # 1. Try pressing Enter key first (WhatsApp Web automatically opens top search result on Enter!)
+            try:
+                page.keyboard.press('Enter')
+                time.sleep(random.uniform(2.5, 4.0))
+                
+                search_panel_open = False
+                for panel_sel in ['input[placeholder*="Search name"]', 'input[aria-label*="Search name"]']:
+                    try:
+                        if page.locator(panel_sel).first.is_visible(timeout=500):
+                            search_panel_open = True
+                            break
+                    except Exception:
+                        pass
+                        
+                msg_box_visible = page.locator('div[contenteditable="true"][data-tab="10"]').first.is_visible(timeout=1500)
+                
+                if not search_panel_open and msg_box_visible:
+                    logger.info(f" [{phone_number}] Confirmed: Search panel closed & chat opened via Enter key!")
+                    contact_opened = True
+                    break
+            except Exception as ee:
+                logger.debug(f" Enter key attempt {attempt+1} exception: {str(ee)}")
+
+            # 2. Universal Result Selectors for Business & Personal Accounts (Saved & Unsaved)
+            result_selectors = [
+                f'div[role="button"]:has-text("{short_number}")',
+                f'div[role="listitem"]:has-text("{short_number}")',
+                f'span:has-text("{short_number}")',
+                'div[role="button"]:has-text("Chat with")',
+                'div[role="listitem"]',
+                'div[data-testid="cell-frame-container"]'
+            ]
+            
+            for selector in result_selectors:
+                try:
+                    elements = page.locator(selector)
+                    count = elements.count()
+                    if count > 0:
+                        for i in range(count):
+                            el = elements.nth(i)
+                            if el.is_visible(timeout=1000):
+                                logger.info(f" [{phone_number}] Found result cell with '{selector}'. Clicking...")
+                                human_click(page, selector)
+                                time.sleep(random.uniform(2.0, 3.5))
+                                
+                                # Confirmation check: Triple Lock
+                                search_panel_open = False
+                                for panel_sel in ['input[placeholder*="Search name"]', 'input[aria-label*="Search name"]']:
+                                    try:
+                                        if page.locator(panel_sel).first.is_visible(timeout=500):
+                                            search_panel_open = True
+                                            break
+                                    except Exception:
+                                        pass
+                                        
+                                new_chat_btn_back = False
+                                for btn_sel in ['div[title="New chat"]', 'button[aria-label="New chat"]', 'span[data-icon="chat"]']:
+                                    try:
+                                        if page.locator(btn_sel).first.is_visible(timeout=500):
+                                            new_chat_btn_back = True
+                                            break
+                                    except Exception:
+                                        pass
+                                        
+                                msg_box_visible = page.locator('div[contenteditable="true"][data-tab="10"]').first.is_visible(timeout=1500)
+                                
+                                if (not search_panel_open or new_chat_btn_back) and msg_box_visible:
+                                    logger.info(f" [{phone_number}] Triple Lock Confirmed: Search panel closed & chat opened!")
+                                    contact_opened = True
+                                    break
+                except Exception as e:
+                    logger.debug(f" Result selector '{selector}' failed attempt {attempt+1}: {str(e)}")
+                    continue
+                    
+                if contact_opened:
+                    break
+                    
+            if contact_opened:
+                break
+                
+            time.sleep(random.uniform(1.5, 2.5))
+            
+        # Check for Invalid ONLY if chat failed to open after all 3 attempts
+        if not contact_opened:
+            is_genuinely_invalid = False
+            try:
+                invalid_selector = 'div:has-text("No results found"), div:has-text("No contacts found"), span:has-text("No results found"), span:has-text("No contacts found")'
+                if page.locator(invalid_selector).first.is_visible(timeout=2000):
+                    time.sleep(1.5)
+                    if page.locator(invalid_selector).first.is_visible(timeout=1000):
+                        is_genuinely_invalid = True
+            except Exception:
+                pass
+                
+            if is_genuinely_invalid:
+                error_reason = "Number not found on WhatsApp (Double-checked: 'No results found' displayed)."
+                logger.warning(f" [{phone_number}] {error_reason}")
+                update_status(campaign_id, phone_number, 'Invalid', error_reason)
+            else:
+                error_reason = "Failed to select contact: Search result did not open chat after maximum attempts."
+                logger.error(f" [{phone_number}] {error_reason}")
+                update_status(campaign_id, phone_number, 'Failed', error_reason)
+                
+            # Recovery: Click Back Button / Escape to reset UI for next recipient
+            logger.info(f" [{phone_number}] Resetting search drawer via Back button for next recipient...")
+            recovered = False
+            for back_sel in ['span[data-icon="back"]', 'button[aria-label="Back"]', 'div[title="Back"]']:
+                try:
+                    if page.locator(back_sel).first.is_visible(timeout=800):
+                        human_click(page, back_sel)
+                        recovered = True
+                        break
+                except Exception:
+                    pass
+            if not recovered:
+                page.keyboard.press("Escape")
+                time.sleep(0.5)
+                page.keyboard.press("Escape")
+            return False
+            
+        logger.info(f" [{phone_number}] Selected contact and opened chat for {clean_number} successfully.")
+        
+        # 5. Verify Chat Interface Loaded
+        try:
+            page.wait_for_selector('div[contenteditable="true"][data-tab="10"]', timeout=10000)
+            logger.info(f" [{phone_number}] Chat opened for {clean_number} successfully.")
+            time.sleep(random.uniform(1.0, 2.0))
+        except PlaywrightTimeoutError:
+            error_reason = "Chat Box Blocked: Contact was clicked, but the message input box did not appear."
+            logger.error(f" [{phone_number}] {error_reason}")
+            update_status(campaign_id, phone_number, 'Failed', error_reason)
             return False
         
         # Send attachment first if provided
+        attachment_sent_with_caption = False
         if attachment_path:
-            attachment_success = send_attachment_playwright(page, attachment_path)
+            # Pass the message to be used as a caption only if preference is True
+            caption_to_send = message if send_as_caption else None
+            attachment_success = send_attachment_playwright(page, attachment_path, caption_message=caption_to_send)
             if not attachment_success:
-                logger.warning(f"⚠️ Failed to send attachment to {phone_number}")
+                logger.warning(f" Failed to send attachment to {phone_number}")
                 # Continue with text message even if attachment fails
+            else:
+                if send_as_caption:
+                    attachment_sent_with_caption = True
         
-        # Send text message if provided
-        if message and message.strip():
+        # Send text message if provided (only if we didn't just send it as a caption)
+        if message and message.strip() and not attachment_sent_with_caption:
             try:
                 # Find message input box with multiple selectors
                 message_selectors = [
@@ -2235,71 +2414,102 @@ def send_message_to_number(page, phone_number, message, campaign_id, attachment_
                         continue
                 
                 if not message_box:
-                    logger.error(f"❌ Could not find message input for {phone_number}")
+                    logger.error(f" Could not find message input for {phone_number}")
                     update_status(campaign_id, phone_number, 'Failed')
                     return False
                 
                 # Clear any existing text and type new message
                 message_box.click()
-                time.sleep(1)
+                time.sleep(random.uniform(1.5, 3.5))
                 
                 # Clear existing content
                 page.keyboard.press('Control+a')
                 page.keyboard.press('Delete')
                 
-                # Type the message
-                message_box.type(message)
-                time.sleep(2)
+                # Type the message handling newlines properly for WhatsApp Web
+                message_lines = message.splitlines()
+                for j, line in enumerate(message_lines):
+                    if line:
+                        message_box.type(line, delay=random.randint(40, 150))
+                    if j < len(message_lines) - 1:
+                        page.keyboard.down('Shift')
+                        page.keyboard.press('Enter')
+                        page.keyboard.up('Shift')
+                
+                time.sleep(random.uniform(1.5, 3.5))
                 
                 # Send message
                 page.keyboard.press('Enter')
-                time.sleep(2)
-                
-                logger.info(f"✅ Message sent to {phone_number}")
+                time.sleep(random.uniform(1.5, 3.5))
+                logger.info(f" Message sent to {phone_number}")
                 
             except Exception as e:
-                logger.error(f"❌ Error sending text message to {phone_number}: {str(e)}")
+                logger.error(f" Error sending text message to {phone_number}: {str(e)}")
                 update_status(campaign_id, phone_number, 'Failed')
                 return False
+                
+        # --- SEND MESSAGE 2 (IF EXISTS) ---
+        if message2 and message2.strip():
+            try:
+                logger.info(f" Sending Message 2 to {phone_number}...")
+                time.sleep(random.uniform(2.5, 6.0))
+                
+                message_selectors = [
+                    'div[contenteditable="true"][data-tab="10"]',
+                    'div[contenteditable="true"][role="textbox"]',
+                    'div[data-testid="conversation-compose-box-input"]'
+                ]
+                
+                message_box2 = None
+                for selector in message_selectors:
+                    try:
+                        message_box2 = page.wait_for_selector(selector, timeout=5000)
+                        if message_box2 and message_box2.is_visible():
+                            break
+                    except:
+                        continue
+                
+                if message_box2:
+                    message_box2.click()
+                    time.sleep(random.uniform(1.0, 2.0))
+                    message_box2.type(message2, delay=random.randint(40, 150))
+                    time.sleep(random.uniform(1.5, 3.5))
+                    page.keyboard.press('Enter')
+                    time.sleep(random.uniform(1.5, 3.5))
+                else:
+                    logger.error(f" Could not find message input for Message 2 to {phone_number}")
+                    
+            except Exception as e:
+                logger.error(f" Error sending Message 2 to {phone_number}: {str(e)}")
+        # ----------------------------------
         
-        # Wait for message/attachment to fully send
-        try:
-            # Give UI a moment to show the sending state
-            page.wait_for_timeout(500)
-            
-            # Check if there are any clock icons (messages currently sending/uploading)
-            # We wait up to 3 seconds for the icon to appear in case of UI lag
-            page.wait_for_selector('span[data-icon="msg-time"]', state='visible', timeout=3000)
-            
-            # If we reach here, it's currently uploading. Now wait for it to finish (disappear)
-            page.wait_for_selector('span[data-icon="msg-time"]', state='hidden', timeout=90000) # Wait up to 90s for video
-        except PlaywrightTimeoutError:
-            # If the clock never appeared, it sent instantly. If it timed out hiding, we continue anyway.
-            pass
-            
         update_status(campaign_id, phone_number, 'Sent')
         return True
         
     except Exception as e:
-        logger.error(f"❌ Error sending message to {phone_number}: {str(e)}")
+        logger.error(f" Error sending message to {phone_number}: {str(e)}")
         update_status(campaign_id, phone_number, 'Failed')
         return False
 
-def update_status(campaign_id, phone_number, status):
+def update_status(campaign_id, phone_number, status, error=None):
     """Update the status of a phone number in the campaign"""
     if campaign_id not in campaign_statuses:
         campaign_statuses[campaign_id] = {}
     
     campaign_statuses[campaign_id][phone_number] = {
         'status': status,
+        'error': error,
         'timestamp': time.time()
     }
 
 def process_campaign_background(campaign_id, account_id):
     """Background function to process the entire WhatsApp campaign using Playwright"""
+    # FIX: Allow Django ORM to run inside Playwright's event loop thread
+    os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
+    
     try:
         # Import your models here to avoid circular imports
-        from bulk.models import WhatsAppCampaign, WhatsAppAccount  # Replace with actual import
+        from bulk.models import WhatsAppCampaign, WhatsAppAccount, FriendlyNumber  # Replace with actual import
         
         campaign = WhatsAppCampaign.objects.get(id=campaign_id)
         
@@ -2314,14 +2524,48 @@ def process_campaign_background(campaign_id, account_id):
                 active_campaigns[campaign_id]['error'] = f"WhatsApp account with ID {account_id} not found"
             return
         
+        # whatsapp sessions path
         phone_numbers = [num.strip() for num in campaign.numbers.splitlines() if num.strip()]
-        session_root = os.path.join(settings.BASE_DIR, "whatsapp_sessions")
-        session_path = Path(session_root) / f"acct_{account_id}_{selected_account_number}"
         
-        # Initialize statuses
+        # --- INIT DB HISTORY ---
+        campaign.status = 'Running'
+        campaign.total_messages = len(phone_numbers)
+        campaign.total_sent = 0
+        campaign.total_failed = 0
+        campaign.save()
+        # -----------------------
+        
+        # Initialize statuses in memory so the frontend shows 'Pending'
         for number in phone_numbers:
             update_status(campaign_id, number, 'Pending')
+            
+        # Get AppData
+        app_data = os.environ.get('APPDATA')
+        if app_data:
+            session_root = os.path.join(app_data, "WhatsApp Commune", "whatsapp_sessions")
+        else:
+            session_root = os.path.join(settings.BASE_DIR, "whatsapp_sessions")
+            
+        session_path = os.path.join(session_root, f"acct_{whatsapp_account.user.id}_{selected_account_number}")
         
+        # Fetch friendly numbers for the account BEFORE entering async context
+        friendly_numbers = []
+        if getattr(campaign, 'friendly_numbers', False):
+            friendly_numbers = list(FriendlyNumber.objects.filter(account_id=account_id, is_active=True).values_list('number', flat=True))
+            logger.info(f"Loaded {len(friendly_numbers)} friendly numbers for interleaved sending.")
+        else:
+            logger.info("Friendly numbers injection disabled for this campaign.")
+            
+        # --- PRE-GENERATE AI SPINTAX TEMPLATES ---
+        ai_template1 = campaign.message1
+        ai_template2 = getattr(campaign, 'message2', None)
+
+        # (AI Generation moved below browser launch)
+        
+        # Initialize next friendly target if enabled
+        next_friendly_target = random.randint(5, 12) if friendly_numbers else -1
+        messages_sent_since_friendly = 0
+
         # Launch Playwright browser with persistent session
         with sync_playwright() as p:
             try:
@@ -2343,61 +2587,195 @@ def process_campaign_background(campaign_id, account_id):
                 active_campaigns[campaign_id]['page'] = page
                 active_campaigns[campaign_id]['browser'] = browser
                 
-                # Open WhatsApp Web
-                logger.info("🚀 Opening WhatsApp Web...")
-                page.goto("https://web.whatsapp.com", timeout=60000)
-                page.wait_for_load_state('networkidle', timeout=60000)
+                # Open WhatsApp Web (with automatic network retry protection)
+                logger.info(" Opening WhatsApp Web...")
+                goto_success = False
+                for goto_attempt in range(3):
+                    try:
+                        page.goto("https://web.whatsapp.com", timeout=60000, wait_until="domcontentloaded")
+                        goto_success = True
+                        break
+                    except Exception as goto_err:
+                        logger.warning(f" Network hiccup during navigation (Attempt {goto_attempt+1}/3): {str(goto_err)}")
+                        time.sleep(3.0)
+                if not goto_success:
+                    raise Exception("Failed to resolve web.whatsapp.com. Please check your internet/DNS connection.")
+                
+                # --- PRE-GENERATE AI SPINTAX TEMPLATES (In background while WA loads) ---
+                if getattr(campaign, 'use_ai_spintax', False):
+                    logger.info(" Generating AI Spintax templates while WhatsApp loads...")
+                    ai_template1 = generate_ai_spintax_template(ai_template1)
+                    if ai_template2 and ai_template2.strip():
+                        ai_template2 = generate_ai_spintax_template(ai_template2.strip())
+                # -----------------------------------------
                 
                 # Wait for WhatsApp to load
-                logger.info("⏳ Waiting for WhatsApp Web to fully load...")
+                logger.info(" Waiting for WhatsApp Web to fully load...")
                 try:
-                    # Wait for either QR code or chat interface
-                    page.wait_for_selector('div[data-testid="qr-code"], div[role="textbox"], canvas', timeout=120000)
+                    # Wait for either QR code or chat list
+                    page.wait_for_selector('div[data-testid="qr-code"], canvas[aria-label*="QR"], [data-testid="chat-list"]', timeout=120000)
                     
                     # Check if QR code is present (not logged in)
-                    if page.query_selector('div[data-testid="qr-code"], canvas'):
-                        logger.warning("⚠️ QR Code detected - please scan to login")
+                    if page.query_selector('div[data-testid="qr-code"], canvas[aria-label*="QR"]'):
+                        logger.warning(" QR Code detected - please scan to login")
                         # Wait for login
-                        page.wait_for_selector('div[role="textbox"]', timeout=300000)  # 5 minutes to login
+                        page.wait_for_selector('[data-testid="chat-list"]', timeout=300000)  # 5 minutes to login
                     
                 except PlaywrightTimeoutError:
-                    logger.error("❌ WhatsApp Web failed to load properly")
+                    logger.error(" WhatsApp Web failed to load properly")
                     active_campaigns[campaign_id]['status'] = 'Failed'
                     active_campaigns[campaign_id]['error'] = 'WhatsApp Web failed to load'
+                    campaign.status = 'Failed'
+                    campaign.save(update_fields=['status'])
                     return
                 
-                logger.info("✅ WhatsApp Web loaded, starting campaign")
+                logger.info(" WhatsApp Web loaded, starting campaign")
+                time.sleep(2.0)
                 
                 # Get attachment path if exists
                 attachment_path = getattr(campaign, 'attachment', None)
                 if attachment_path and hasattr(attachment_path, 'path'):
                     attachment_path = attachment_path.path
                 
+                last_friendly_num = None
+                
+                # --- BATCH COOLING TRACKER ---
+                batch_counter = 0
+                user_break_interval = getattr(campaign, 'batch_break_interval', 20) or 20
+                batch_limit = user_break_interval
+                
                 # Loop through each number
                 for i, phone_number in enumerate(phone_numbers):
+                    # --- BATCH COOL-DOWN BREAK CHECK ---
+                    if batch_counter >= batch_limit:
+                        user_break_mins = getattr(campaign, 'break_duration', 3) or 3
+                        # Add slight human fuzz (+/- 20s) around user's break duration
+                        fuzz_secs = random.uniform(-20, 20)
+                        break_seconds = max(30, int(user_break_mins * 60 + fuzz_secs))
+                        start_break = time.time()
+                        
+                        logger.info(f" [Anti-Ban] Reached batch break interval ({batch_limit} msgs). Cooling down for ~{user_break_mins} minutes ({break_seconds}s total)...")
+                        
+                        while True:
+                            elapsed = time.time() - start_break
+                            remaining_sec = max(0, int(break_seconds - elapsed))
+                            if remaining_sec <= 0:
+                                break
+                                
+                            if campaign_id not in active_campaigns or active_campaigns[campaign_id].get('stopped', False):
+                                break
+                                
+                            rem_m = remaining_sec // 60
+                            rem_s = remaining_sec % 60
+                            status_str = f'Taking a Break ({rem_m}m {rem_s}s)' if rem_m > 0 else f'Taking a Break ({rem_s}s)'
+                            
+                            campaign.status = status_str
+                            campaign.save(update_fields=['status'])
+                            
+                            # Sleep 2 seconds for live smooth updates
+                            time.sleep(2)
+                            if random.random() < 0.15:
+                                execute_human_idle_action(page)
+                                
+                        batch_counter = 0
+                        batch_limit = getattr(campaign, 'batch_break_interval', 20) or 20
+                        campaign.status = 'Running'
+                        campaign.save(update_fields=['status'])
+                        logger.info(" [Anti-Ban] Cool-down finished. Resuming humanized campaign...")
+                        
+                    batch_counter += 1
+                    # -----------------------------------
+
                     # Stop or pause checks
                     if campaign_id not in active_campaigns or active_campaigns[campaign_id].get('stopped', False):
+                        campaign.status = 'Stopped'
+                        campaign.save(update_fields=['status'])
                         break
                     
                     while active_campaigns[campaign_id].get('paused', False):
-                        time.sleep(2)
+                        time.sleep(random.uniform(1.5, 3.5))
                         if active_campaigns[campaign_id].get('stopped', False):
                             break
                     
                     if active_campaigns[campaign_id].get('stopped', False):
+                        campaign.status = 'Stopped'
+                        campaign.save(update_fields=['status'])
                         break
+                        
+                    logger.info(f" Sending message to {phone_number} ({i+1}/{len(phone_numbers)})")
                     
-                    logger.info(f"📱 Sending message to {phone_number} ({i+1}/{len(phone_numbers)})")
-                    success = send_message_to_number(page, phone_number, campaign.message1, campaign_id, attachment_path)
+                    # --- DUAL SPINTAX ORCHESTRATION ---
+                    logger.info(f"[LOCAL] Expanding variation for recipient {phone_number}...")
                     
-                    # Delay between messages
+                    final_message = ai_template1
+                    # Parse normal spintax (which now also handles AI-generated spintax options)
+                    if getattr(campaign, 'use_normal_spintax', False) or getattr(campaign, 'use_ai_spintax', False):
+                        final_message = parse_normal_spintax(final_message)
+                        
+                    final_message2 = None
+                    if ai_template2 and ai_template2.strip():
+                        final_message2 = ai_template2.strip()
+                        if getattr(campaign, 'use_normal_spintax', False) or getattr(campaign, 'use_ai_spintax', False):
+                            final_message2 = parse_normal_spintax(final_message2)
+                    # ----------------------------------
+                    
+                    success = send_message_to_number(page, phone_number, final_message, campaign_id, attachment_path, getattr(campaign, 'send_as_caption', True), message2=final_message2)
+                    
+                    # --- UPDATE DB METRICS ---
+                    if success:
+                        campaign.total_sent += 1
+                    else:
+                        campaign.total_failed += 1
+                    campaign.detailed_report = campaign_statuses.get(campaign_id, {})
+                    campaign.save(update_fields=['total_sent', 'total_failed', 'detailed_report'])
+                    # -------------------------
+                    
+                    # --- FRIENDLY NUMBER LOGIC ---
+                    if friendly_numbers and next_friendly_target > 0:
+                        messages_sent_since_friendly += 1
+                        if messages_sent_since_friendly >= next_friendly_target:
+                            available_friendly_numbers = [n for n in friendly_numbers if n != last_friendly_num]
+                            if not available_friendly_numbers:
+                                available_friendly_numbers = friendly_numbers
+                                
+                            friendly_num = random.choice(available_friendly_numbers)
+                            last_friendly_num = friendly_num
+                            
+                            logger.info(f" [Friendly Number] Interleaving friendly message to {friendly_num} to keep account warm.")
+                            try:
+                                # Small pause before friendly message
+                                time.sleep(random.uniform(2.0, 5.0))
+                                
+                                # Send friendly message (isolated from campaign metrics using -1 as campaign_id)
+                                friendly_msg = random.choice([
+                                    "Hey how are you?", "Checking in, all good?", 
+                                    "Just testing my phone", "Hello!", 
+                                    "Good morning", "Hope you're having a good day!"
+                                ])
+                                send_message_to_number(page, friendly_num, friendly_msg, -1, None, False)
+                                
+                                # Reset counters
+                                messages_sent_since_friendly = 0
+                                next_friendly_target = random.randint(5, 12)
+                            except Exception as fe:
+                                logger.warning(f" [Friendly Number] Failed to send to {friendly_num}: {fe}. Continuing normal campaign...")
+                    # -----------------------------
+                    
+                    # Delay between messages using Gaussian bell-curve and wallpaper mouse drift
                     if i < len(phone_numbers) - 1:
-                        delay = getattr(campaign, 'delay', 8) or 8
-                        time.sleep(delay)
+                        human_delay = get_gaussian_delay(mean=12.0, stddev=3.0, min_delay=6.0, max_delay=20.0)
+                        logger.info(f" [Anti-Ban] Waiting {human_delay:.1f}s (Gaussian bell-curve) before next message...")
+                        time.sleep(human_delay / 2)
+                        execute_human_idle_action(page)
+                        time.sleep(human_delay / 2)
                 
-                # Mark campaign as completed
-                active_campaigns[campaign_id]['status'] = 'Completed'
-                logger.info(f"🎉 Campaign {campaign_id} completed successfully")
+                # Mark campaign as completed if not stopped
+                if campaign.status != 'Stopped':
+                    active_campaigns[campaign_id]['status'] = 'Completed'
+                    campaign.status = 'Completed'
+                    campaign.detailed_report = campaign_statuses.get(campaign_id, {})
+                    campaign.save(update_fields=['status', 'detailed_report'])
+                    logger.info(f" Campaign {campaign_id} completed successfully")
                 
             except Exception as e:
                 logger.error(f"Browser error in campaign {campaign_id}: {str(e)}")
@@ -2405,16 +2783,33 @@ def process_campaign_background(campaign_id, account_id):
             finally:
                 # Clean up browser
                 try:
+                    if 'page' in active_campaigns.get(campaign_id, {}):
+                        active_campaigns[campaign_id]['page'].close()
                     if 'browser' in active_campaigns.get(campaign_id, {}):
                         active_campaigns[campaign_id]['browser'].close()
                 except Exception as e:
                     logger.error(f"Error closing browser: {str(e)}")
                 
     except Exception as e:
-        logger.error(f"Campaign {campaign_id} failed: {str(e)}")
+        error_msg = str(e)
+        if "Call log:" in error_msg:
+            error_msg = error_msg.split("Call log:")[0].strip()
+        if "Target page, context or browser has been closed" in error_msg:
+            error_msg = "WhatsApp Web was closed unexpectedly."
+            
+        logger.error(f"Campaign {campaign_id} failed: {error_msg}")
         if campaign_id in active_campaigns:
             active_campaigns[campaign_id]['status'] = 'Failed'
-            active_campaigns[campaign_id]['error'] = str(e)
+            active_campaigns[campaign_id]['error'] = error_msg
+        # Update DB on fatal exception
+        try:
+            from bulk.models import WhatsAppCampaign
+            c = WhatsAppCampaign.objects.get(id=campaign_id)
+            c.status = 'Failed'
+            c.detailed_report = campaign_statuses.get(campaign_id, {})
+            c.save(update_fields=['status', 'detailed_report'])
+        except:
+            pass
 
 @login_required
 def start_messaging(request, campaign_id):
@@ -2453,8 +2848,11 @@ def start_messaging(request, campaign_id):
             'started_at': time.time()
         }
         
-        # Initialize status storage
+        # Synchronously initialize status storage so frontend doesn't falsely think it's completed on first poll
         campaign_statuses[campaign_id] = {}
+        phone_numbers = [num.strip() for num in campaign.numbers.splitlines() if num.strip()]
+        for number in phone_numbers:
+            update_status(campaign_id, number, 'Pending')
         
         # Start background thread
         thread = threading.Thread(
@@ -2492,8 +2890,17 @@ def campaign_status(request, campaign_id):
     counts = {'Pending': 0, 'Processing': 0, 'Sent': 0, 'Failed': 0, 'Invalid': 0}
     
     for phone, data in statuses.items():
-        status = data['status']
-        formatted_statuses[phone] = status
+        status = data.get('status', 'Pending')
+        
+        timestamp_str = "-"
+        if 'timestamp' in data and data['timestamp']:
+            import datetime
+            timestamp_str = datetime.datetime.fromtimestamp(data['timestamp']).strftime("%I:%M:%S %p")
+            
+        formatted_statuses[phone] = {
+            'status': status,
+            'timestamp': timestamp_str
+        }
         counts[status] = counts.get(status, 0) + 1
     
     # Determine overall status
@@ -2502,6 +2909,8 @@ def campaign_status(request, campaign_id):
         overall_status = "Paused"
     elif campaign_info.get('stopped', False):
         overall_status = "Stopped"
+    elif campaign.status and ("Taking a Break" in campaign.status or "Cooling" in campaign.status or "Break" in campaign.status):
+        overall_status = campaign.status
     elif campaign_info.get('status') == 'Running':
         if counts['Processing'] > 0:
             overall_status = "Running"
@@ -2514,33 +2923,47 @@ def campaign_status(request, campaign_id):
     elif campaign_info.get('status') == 'Failed':
         overall_status = "Failed"
     else:
-        overall_status = "Not Started"
+        overall_status = campaign.status if campaign.status else "Not Started"
     
     return JsonResponse({
         "overall_status": overall_status,
         "statuses": formatted_statuses,
-        "counts": counts
+        "counts": counts,
+        "error": campaign_info.get('error', None)
     })
 
 @login_required
 def pause_campaign(request, campaign_id):
     """Pause the running campaign"""
+    from bulk.models import WhatsAppCampaign
     if campaign_id in active_campaigns:
         active_campaigns[campaign_id]['paused'] = True
-        return JsonResponse({"success": True, "message": "Campaign paused"})
-    return JsonResponse({"success": False, "message": "Campaign not found"}, status=404)
+    try:
+        c = WhatsAppCampaign.objects.get(id=campaign_id, user=request.user)
+        c.status = 'Paused'
+        c.save(update_fields=['status'])
+    except Exception:
+        pass
+    return JsonResponse({"success": True, "message": "Campaign paused"})
 
 @login_required
 def resume_campaign(request, campaign_id):
     """Resume the paused campaign"""
+    from bulk.models import WhatsAppCampaign
     if campaign_id in active_campaigns:
         active_campaigns[campaign_id]['paused'] = False
-        return JsonResponse({"success": True, "message": "Campaign resumed"})
-    return JsonResponse({"success": False, "message": "Campaign not found"}, status=404)
+    try:
+        c = WhatsAppCampaign.objects.get(id=campaign_id, user=request.user)
+        c.status = 'Running'
+        c.save(update_fields=['status'])
+    except Exception:
+        pass
+    return JsonResponse({"success": True, "message": "Campaign resumed"})
 
 @login_required
 def stop_campaign(request, campaign_id):
     """Stop the running campaign"""
+    from bulk.models import WhatsAppCampaign
     if campaign_id in active_campaigns:
         active_campaigns[campaign_id]['stopped'] = True
         active_campaigns[campaign_id]['status'] = 'Stopped'
@@ -2554,9 +2977,44 @@ def stop_campaign(request, campaign_id):
         
         # Remove from active campaigns
         del active_campaigns[campaign_id]
+
+    try:
+        c = WhatsAppCampaign.objects.get(id=campaign_id, user=request.user)
+        c.status = 'Stopped'
+        c.save(update_fields=['status'])
+    except Exception:
+        pass
         
-        return JsonResponse({"success": True, "message": "Campaign stopped"})
-    return JsonResponse({"success": False, "message": "Campaign not found"}, status=404)
+    return JsonResponse({"success": True, "message": "Campaign stopped"})
+
+@login_required
+def relaunch_campaign(request, campaign_id):
+    """Duplicates a past campaign and opens its deploy page for immediate re-sending."""
+    from bulk.models import WhatsAppCampaign
+    old_campaign = get_object_or_404(WhatsAppCampaign, id=campaign_id, user=request.user)
+    
+    # Create cloned campaign instance
+    new_campaign = WhatsAppCampaign.objects.create(
+        user=request.user,
+        name=f"Resend: {old_campaign.name}" if not old_campaign.name.startswith("Resend:") else old_campaign.name,
+        message1=old_campaign.message1,
+        message2=old_campaign.message2,
+        numbers=old_campaign.numbers,
+        country_code=old_campaign.country_code,
+        attachment=old_campaign.attachment,
+        whatsapp_account=old_campaign.whatsapp_account,
+        delay=old_campaign.delay,
+        batch_break_interval=getattr(old_campaign, 'batch_break_interval', 15) or 15,
+        break_duration=getattr(old_campaign, 'break_duration', 3) or 3,
+        friendly_numbers=old_campaign.friendly_numbers,
+        send_as_caption=old_campaign.send_as_caption,
+        use_normal_spintax=old_campaign.use_normal_spintax,
+        use_ai_spintax=old_campaign.use_ai_spintax,
+        status='Pending'
+    )
+    
+    messages.success(request, f"Campaign cloned! Ready to resend '{new_campaign.name}'.")
+    return redirect('deploy_campaign', campaign_id=new_campaign.id)
 
 def check_session_validity(session_path):
     """Check if WhatsApp session is valid and contains necessary data"""
@@ -2597,28 +3055,29 @@ def check_session_validity(session_path):
 
 
 def settings_view(request):
+    from bulk.models import AppSetting
+    
     if request.method == 'POST':
-        nickname = request.POST.get('nickname')
-        active = request.POST.get('activeStatus') == 'on'
-        send_at = request.POST.get('send_at')
-        repeat = request.POST.get('repeatSchedule') == 'on'
-        logging = request.POST.get('logging')
-        encryption = request.POST.get('encryption') == 'on'
-        backup = request.POST.get('backup') == 'on'
+        gemini_key = request.POST.get('gemini_api_key', '').strip()
+        
+        # Save or update the key
+        setting, created = AppSetting.objects.get_or_create(key='GEMINI_API_KEY')
+        setting.value = gemini_key
+        setting.save()
 
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse({"success": True, "has_key": bool(gemini_key)})
 
-        print("Nickname:", nickname)
-        print("Active:", active)
-        print("Send At:", send_at)
-        print("Repeat:", repeat)
-        print("Logging:", logging)
-        print("Encryption:", encryption)
-        print("Backup:", backup)
-
-        messages.success(request, "Settings saved successfully.")
+        messages.success(request, "Gemini API Key saved successfully.")
         return redirect('settings_view')
 
-    return render(request, 'settings.html')
+    # Fetch the existing key to pre-fill the form (if it exists)
+    try:
+        gemini_api_key = AppSetting.objects.get(key='GEMINI_API_KEY').value
+    except AppSetting.DoesNotExist:
+        gemini_api_key = ""
+
+    return render(request, 'settings.html', {'gemini_api_key': gemini_api_key})
 
 
 @login_required
@@ -2629,24 +3088,38 @@ def add_account(request):
         form = WhatsAppAccountForm(request.POST, request.FILES)
         if form.is_valid():
             account = form.save(commit=False)
+            
+            #  Prevent a single user from adding the exact same number twice
+            # (Different users CAN share a number because they get different folders)
+            if WhatsAppAccount.objects.filter(user=request.user, number=account.number).exists():
+                if is_ajax:
+                    return JsonResponse({
+                        "success": False,
+                        "message": "You have already added this WhatsApp number to your dashboard."
+                    })
+                messages.error(request, "You have already added this WhatsApp number.")
+                return redirect("add_account")
+                
             account.user = request.user
             account.save()
 
-            # ✅ Make this account default
-
+            #  Make this account default
             WhatsAppAccount.objects.filter(user=request.user).exclude(id=account.id).update(is_default=False)
             account.is_default = True
             account.save()
 
-            # ✅ Create session folder
-
-            session_root = os.path.join(settings.BASE_DIR, "whatsapp_sessions")
+            #  Create session folder
+            app_data = os.environ.get('APPDATA')
+            if app_data:
+                session_root = os.path.join(app_data, "WhatsApp Commune", "whatsapp_sessions")
+            else:
+                session_root = os.path.join(settings.BASE_DIR, "whatsapp_sessions")
+                
             os.makedirs(session_root, exist_ok=True)
             session_path = os.path.join(session_root, f"acct_{request.user.id}_{account.number}")
             os.makedirs(session_path, exist_ok=True)
 
-            # ✅ Store session path but don’t run  immediately
-
+            #  Store session path but dont run Selenium immediately
             account.session_path = session_path
             account.is_active = False
             account.save()
@@ -2662,35 +3135,82 @@ def add_account(request):
                 return redirect("add_account")
 
         else:
+            print("FORM ERRORS:", form.errors)
             if is_ajax:
+                # Extract first error as a clean string to bypass frontend cache issues
+                try:
+                    error_dict = form.errors.get_json_data()
+                    first_field = list(error_dict.keys())[0]
+                    first_error_msg = error_dict[first_field][0]['message']
+                    error_msg = f"{first_field.capitalize()}: {first_error_msg}"
+                except:
+                    error_msg = "Form validation failed (check fields)"
+
                 return JsonResponse({
                     "success": False,
-                    "message": "Form validation failed",
+                    "message": error_msg,
                     "errors": form.errors.as_json()
                 })
             messages.error(request, f"Form validation failed: {form.errors}")
             return redirect("add_account")
 
-    # GET request → return empty form
+    # GET request  return empty form
     form = WhatsAppAccountForm()
     return render(request, "addaccount.html", {"form": form})
 
 
 
 
+ 
 
+
+
+# @csrf_exempt  
+# def add_account_and_scan_qr(request):
+#     if request.method == 'POST':
+#         form = WhatsAppAccountForm(request.POST)
+#         if form.is_valid():
+#             account = form.save(commit=False)
+#             account.user = request.user
+#             account.save()
+
+           
+#             WhatsAppAccount.objects.filter(user=request.user).exclude(id=account.id).update(is_default=False)
+#             account.is_default = True
+#             account.save()
+
+#             try:
+#                 profile_dir = os.path.join(settings.BASE_DIR, 'sessions', f'session_{account.id}')
+#                 os.makedirs(profile_dir, exist_ok=True)
+
+#                 chrome_options = Options()
+#                 chrome_options.add_argument(f"--user-data-dir={profile_dir}")
+#                 chrome_options.add_argument("--profile-directory=Default")
+#                 chrome_options.add_argument("--start-maximized")
+
+#                 driver = webdriver.Chrome(options=chrome_options)
+#                 driver.get("https://web.whatsapp.com")
+#                 time.sleep(random.uniform(16.0, 30.0))
+#                 driver.quit()
+
+#                 return JsonResponse({'success': True, 'message': 'Account added and QR scanned', 'account_id': account.id})
+#             except Exception as e:
+#                 return JsonResponse({'success': False, 'message': f'Selenium error: {str(e)}'})
+#         else:
+#             return JsonResponse({'success': False, 'message': 'Form error', 'errors': form.errors})
+#     return JsonResponse({'success': False, 'message': 'Invalid request'})
 
 def login_view(request):
     if request.method == 'POST':
-        username = request.POST['username']
-        password = request.POST['password']
+        username = request.POST.get('username')
+        password = request.POST.get('password')
         user = authenticate(request, username=username, password=password)
 
         if user is not None:
             login(request, user)
             return redirect('index')  
-    else:
-            messages.error(request, 'Invalid credentials')
+        else:
+            messages.error(request, 'Invalid username or password')
     return render(request, 'login.html')
 
 @login_required
@@ -2745,4 +3265,227 @@ def deploy_latest(request):
         messages.error(request, "No campaign available.")
         return redirect('index')
 
-   
+# --- FRIENDLY NUMBERS API ---
+
+@login_required
+def get_friendly_numbers(request):
+    try:
+        account = WhatsAppAccount.objects.filter(user=request.user, is_default=True).first() or WhatsAppAccount.objects.filter(user=request.user).first()
+        if not account:
+            return JsonResponse({"error": "No active WhatsApp account found"}, status=400)
+        
+        numbers = FriendlyNumber.objects.filter(account=account).order_by('-created_at')
+        data = [{
+            "id": n.id,
+            "number": n.number,
+            "name": n.name,
+            "is_active": n.is_active
+        } for n in numbers]
+        
+        return JsonResponse({"success": True, "numbers": data})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({"error": str(e)}, status=500)
+
+@login_required
+def save_friendly_numbers(request):
+    try:
+        if request.method != 'POST':
+            return JsonResponse({"error": "Invalid method"}, status=405)
+            
+        account = WhatsAppAccount.objects.filter(user=request.user, is_default=True).first() or WhatsAppAccount.objects.filter(user=request.user).first()
+        if not account:
+            return JsonResponse({"error": "No active WhatsApp account found"}, status=400)
+            
+        manual_numbers = request.POST.get('manual_numbers', '')
+        excel_file = request.FILES.get('excel_file')
+        
+        added = 0
+        duplicates = 0
+        invalid = 0
+        
+        import pandas as pd
+        import json
+        from django.db import IntegrityError
+        
+        def process_number(raw_num, name=""):
+            nonlocal added, duplicates, invalid
+            if not raw_num: return
+            
+            clean_num = str(raw_num).strip()
+            if not clean_num: return
+            
+            # Remove pandas .0 float artifact
+            if clean_num.endswith('.0'):
+                clean_num = clean_num[:-2]
+                
+            # Validation using digits count
+            digits_only = ''.join(filter(str.isdigit, clean_num))
+            if len(digits_only) >= 7 and clean_num.lower() != 'nan':
+                try:
+                    FriendlyNumber.objects.create(
+                        account=account,
+                        number=clean_num,
+                        name=str(name).strip() if pd.notna(name) else ""
+                    )
+                    added += 1
+                except IntegrityError:
+                    duplicates += 1
+            else:
+                invalid += 1
+
+        # Process Manual
+        if manual_numbers:
+            for num in manual_numbers.split(","):
+                process_number(num)
+                
+        # Process File
+        if excel_file:
+            try:
+                file_ext = os.path.splitext(excel_file.name)[1].lower()
+                if file_ext == '.csv':
+                    df = pd.read_csv(excel_file, dtype=str)
+                elif file_ext == '.xlsx':
+                    df = pd.read_excel(excel_file, dtype=str)
+                else:
+                    return JsonResponse({"error": "Invalid file format. Use .csv or .xlsx"}, status=400)
+                    
+                if df.empty and len(df.columns) > 0:
+                    header_data = df.columns.tolist()
+                    process_number(header_data[0], header_data[1] if len(header_data) > 1 else "")
+                elif not df.empty:
+                    for _, row in df.iterrows():
+                        if len(df.columns) > 0:
+                            process_number(row.iloc[0], row.iloc[1] if len(df.columns) > 1 else "")
+            except Exception as e:
+                return JsonResponse({"error": f"Error parsing file: {str(e)}"}, status=400)
+                
+        return JsonResponse({
+            "success": True,
+            "added": added,
+            "duplicates": duplicates,
+            "invalid": invalid
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({"error": str(e)}, status=500)
+
+@login_required
+def toggle_friendly_number(request, number_id):
+    if request.method != 'POST':
+        return JsonResponse({"error": "Invalid method"}, status=405)
+        
+    num = get_object_or_404(FriendlyNumber, id=number_id, account__user=request.user)
+    num.is_active = not num.is_active
+    num.save()
+    
+    return JsonResponse({"success": True, "is_active": num.is_active})
+
+@login_required
+def delete_friendly_number(request, number_id):
+    if request.method != 'POST':
+        return JsonResponse({"error": "Invalid method"}, status=405)
+        
+    num = get_object_or_404(FriendlyNumber, id=number_id, account__user=request.user)
+    num.delete()
+    
+    return JsonResponse({"success": True})
+
+@login_required
+def campaign_history(request):
+    """View to display the history of all past campaigns"""
+    from bulk.models import WhatsAppCampaign
+    from django.core.paginator import Paginator
+    
+    # Sorting logic
+    sort_order = request.GET.get('sort', 'newest')
+    if sort_order == 'oldest':
+        campaigns_query = WhatsAppCampaign.objects.filter(user=request.user).defer('numbers').order_by('created_at')
+    else:
+        campaigns_query = WhatsAppCampaign.objects.filter(user=request.user).defer('numbers').order_by('-created_at')
+        
+    # Pagination
+    paginator = Paginator(campaigns_query, 10)
+    page_number = request.GET.get('page')
+    campaigns = paginator.get_page(page_number)
+    
+    return render(request, "history.html", {
+        "campaigns": campaigns,
+        "sort_order": sort_order
+    })
+
+@login_required
+def view_campaign(request, campaign_id):
+    """API view to fetch campaign details for the view modal"""
+    from bulk.models import WhatsAppCampaign
+    campaign = get_object_or_404(WhatsAppCampaign, id=campaign_id, user=request.user)
+    
+    return JsonResponse({
+        "success": True,
+        "name": campaign.name,
+        "created_at": campaign.created_at.strftime("%b %d, %Y %I:%M %p"),
+        "account": campaign.whatsapp_account.number if campaign.whatsapp_account else "Deleted Account",
+        "message1": campaign.message1,
+        "message2": campaign.message2,
+        "delay": campaign.delay,
+        "numbers": campaign.numbers,
+        "safe_mode": campaign.safe_mode,
+        "deduplicate": campaign.deduplicate,
+        "use_ai_spintax": getattr(campaign, 'use_ai_spintax', False),
+        "use_normal_spintax": getattr(campaign, 'use_normal_spintax', False),
+        "friendly_numbers": getattr(campaign, 'friendly_numbers', False)
+    })
+
+
+@login_required
+def download_campaign_report(request, campaign_id):
+    """Generate and download a detailed CSV report of the campaign's success/failures."""
+    from bulk.models import WhatsAppCampaign
+    from django.shortcuts import get_object_or_404
+    import datetime
+    import csv
+    
+    campaign = get_object_or_404(WhatsAppCampaign, id=campaign_id, user=request.user)
+    
+    # Create the HTTP response with CSV headers
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="campaign_{campaign_id}_report.csv"'
+    
+    writer = csv.writer(response)
+    writer.writerow(['Phone Number', 'Status', 'Exact Error Reason', 'Timestamp'])
+    
+    # Try database detailed_report first, then in-memory campaign_statuses
+    detailed_report = campaign.detailed_report or {}
+    if not detailed_report and campaign_id in campaign_statuses:
+        detailed_report = campaign_statuses[campaign_id]
+        
+    if not detailed_report:
+        # Fallback for older campaigns: export recipient numbers list
+        phone_numbers = [num.strip() for num in campaign.numbers.splitlines() if num.strip()]
+        for phone in phone_numbers:
+            writer.writerow([phone, 'Completed' if campaign.status == 'Completed' else campaign.status, 'No detailed logs saved for older campaign', '-'])
+        return response
+        
+    for phone, info in detailed_report.items():
+        if isinstance(info, dict):
+            status = info.get('status', 'Unknown')
+            error = info.get('error', '')
+            timestamp_val = info.get('timestamp')
+        else:
+            status = str(info)
+            error = ''
+            timestamp_val = None
+            
+        time_str = "-"
+        if timestamp_val:
+            try:
+                time_str = datetime.datetime.fromtimestamp(float(timestamp_val)).strftime("%Y-%m-%d %I:%M:%S %p")
+            except Exception:
+                time_str = str(timestamp_val)
+            
+        writer.writerow([phone, status, error, time_str])
+        
+    return response
+

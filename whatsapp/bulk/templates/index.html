@@ -4,6 +4,36 @@
 <form action="{% url 'save_campaign' %}" method="post" enctype="multipart/form-data">
   {% csrf_token %}
 
+  {% if not user.is_authenticated %}
+  <div class="alert alert-danger m-3 mb-4 shadow-sm border-danger border-2 d-flex align-items-center" role="alert">
+    <i class="bi bi-person-lock fs-3 me-3 text-danger"></i>
+    <div>
+      <h5 class="alert-heading mb-1 fw-bold text-danger">Action Required: Please Log In</h5>
+      <p class="mb-0 text-dark">You are not logged in. <a href="{% url 'login' %}" class="fw-bold text-danger text-decoration-underline">Click here to Log In or Sign Up</a> before you can connect your WhatsApp!</p>
+    </div>
+  </div>
+  {% elif not accounts %}
+  <div class="alert alert-warning m-3 mb-4 shadow-sm border-warning border-2 d-flex align-items-center" role="alert" style="background-color: #fff3cd;">
+    <i class="bi bi-exclamation-triangle-fill fs-3 me-3 text-warning"></i>
+    <div>
+      <h5 class="alert-heading mb-1 fw-bold text-dark">Action Required: No WhatsApp Account Connected</h5>
+      <p class="mb-0 text-dark">You cannot send messages yet. <a href="{% url 'add_account' %}" class="fw-bold text-dark text-decoration-underline">Click here to link your WhatsApp</a> before filling out this form</p>
+    </div>
+  </div>
+  {% endif %}
+
+  <style>
+    /* Custom green theme for the radio button */
+    .account-radio:checked {
+      background-color: #198754;
+      border-color: #198754;
+    }
+    /* Show "Selected" text only when radio is checked */
+    .account-radio:checked ~ .selected-label {
+      display: inline-block !important;
+    }
+  </style>
+
   <!-- MAIN PART STARTING -->
   <!-- <div>
     <h4 data-i18n="makeBulk" class="m-3 mt-5 Maketext shadow-sm ">Make the bulk Message</h4>
@@ -46,15 +76,41 @@
       </div>
     </div> -->
     <!-- Individual Message Section -->
-    <div class="col-12 col-md-6">
+    <div class="col-12">
       <div class="p-3 border rounded shadow-sm h-100">
         <div class="leftsideheader bg-success text-white py-2 px-3 mb-3 rounded">
           <i class="bi bi-person-fill me-1"></i> Individual Message
         </div>
 
         <div>
+          <!-- Error and Messages Display -->
+    {% if error %}
+      <div class="alert alert-danger alert-dismissible fade show mt-3" role="alert">
+        <strong>Error:</strong> {{ error }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endif %}
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show mt-3" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    <div class="alert alert-warning d-none mt-3" id="contactValidationAlert" role="alert">
+            <i class="bi bi-exclamation-triangle-fill flex-shrink-0 me-2"></i>
+            <div>Please upload an Excel file or enter manual contact numbers before starting.</div>
+          </div>
+
           <label for="excelUpload" class="form-label">Upload Excel File (CSV or XLSX)</label>
-          <input type="file" name="excel_file" class="form-control" id="excelUpload" accept=".csv, .xlsx">
+          <input type="file" name="excel_file" class="form-control rounded-0" id="excelUpload" accept=".csv, .xlsx">
+
+          <div class="alert alert-info mt-2 rounded-0 p-2 mb-0" style="font-size: 13px;">
+            <strong><i class="bi bi-info-circle-fill"></i></strong> 
+            If you are mixing numbers from multiple different countries in the exact same Excel sheet, you <strong>must</strong> ensure the foreign numbers have their specific country code (like +81 or 81) attached to them in the sheet. As long as they have their country code, the system will instantly recognize them and format them perfectly for their respective countries!
+          </div>
 
           <div class="form-check mt-3">
             <input class="form-check-input" type="checkbox" id="deduplicate" name="deduplicate">
@@ -83,7 +139,8 @@
       </div>
     </div>
 
-    <!-- Group Message Section -->
+    <!-- Group Message Section (HIDDEN FOR NOW) -->
+    <!--
     <div class="col-12 col-md-6">
       <div class="p-3 border rounded shadow-sm h-100">
         <div class="leftsideheader bg-success text-white py-2 px-3 mb-3 rounded">
@@ -105,6 +162,7 @@
         </div>
       </div>
     </div>
+    -->
   </div>
 
   <!-- Message area -->
@@ -113,14 +171,44 @@
   </div>
 
   <!-- message tab -->
-  <div class="col-md-12 p-5 pt-3 mt-4 shadow-sm rightarea">
+  <div class="col-md-12 p-5 pt-3 mt-4 rightarea">
+    
+    <!-- Spintax Controls (Moved from Modal) -->
+    <div class="d-flex justify-content-between align-items-center mb-3 p-3 bg-light rounded border">
+      <div>
+        <label class="form-label fw-bold  mb-1">Spintax Settings</label>
+        <div class="d-flex gap-4 mt-1">                     
+          <div class="form-check" title="Randomly picks words from {A|B} brackets">
+            <input class="form-check-input" type="checkbox" name="use_normal_spintax" id="normalSpintax" onchange="if(this.checked) insertSpintax()">
+            <label class="form-check-label" for="normalSpintax" style="cursor: help;">Normal Spintax <code>{A|B}</code> &#9432;</label>
+          </div>
+          {% if gemini_api_key %}
+          <div class="form-check" title="Uses Google AI to rewrite your entire message uniquely every time">
+            <input class="form-check-input" type="checkbox" name="use_ai_spintax" id="aiSpintax">
+            <label class="form-check-label" for="aiSpintax" style="cursor: help;">AI Spintax &#9432;</label>
+          </div>
+          {% else %}
+          <div class="form-check text-muted" title="Click the three dots (Settings) in the top right to add a Gemini API Key to enable AI Spintax.">
+            <input class="form-check-input" type="checkbox" name="use_ai_spintax" id="aiSpintax" disabled>
+            <label class="form-check-label text-muted" for="aiSpintax" style="cursor: not-allowed; text-decoration: line-through;">AI Spintax &#9432;</label>
+            <div class="form-text mt-0 pt-0 text-danger" style="font-size: 0.75rem;">Requires API Key (Settings)</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      <div>
+        <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#friendlyNumbersModal" onclick="fetchFriendlyNumbers()">
+          <i class="bi bi-people-fill me-1"></i> Manage Friendly Numbers
+        </button>
+      </div>
+    </div>
+
     <ul class="nav nav-tabs nav-fill" id="messageTabs" role="tablist">
       <li class="nav-item" role="presentation">
-        <button class="nav-link messagearea1 active" id="msg1-tab" data-bs-toggle="tab" data-bs-target="#msg1">Message
-          1</button>
+        <button type="button" class="nav-link messagearea1 active" id="msg1-tab" data-bs-toggle="tab" data-bs-target="#msg1">Message 1</button>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link" id="msg2-tab" data-bs-toggle="tab" data-bs-target="#msg2">Message 2</button>
+        <button type="button" class="nav-link" id="msg2-tab" data-bs-toggle="tab" data-bs-target="#msg2">Message 2</button>
       </li>
     </ul>
 
@@ -137,22 +225,31 @@
     <div class="mt-3 Attachment">
       <label for="attachmentUpload" class="form-label">Attach File (Image, PDF, etc.)</label>
       <input type="file" class="form-control mb-2" name="attachment" id="attachmentUpload" multiple>
-      <small class="text-muted">You can upload multiple files (Images, PDFs, Docs, etc.)</small>
+      <small class="text-muted">You can upload files (Images, PDFs, Docs, etc.)</small>
+      <div class="form-check mt-2">
+        <input class="form-check-input" type="checkbox" id="sendAsCaption" name="send_as_caption" checked="checked">
+        <label class="form-check-label" for="sendAsCaption">Send Message with Attachment</label>
+      </div>
     </div>
 
     <!-- Launch buttons -->
-    <div>
-      <button class="btn btn-success startbtn mt-4" data-bs-toggle="modal" data-bs-target="#startCampaignModal"
-        type="button">
+    <div class="mb-5 pb-5 position-relative" style="z-index: 10;">
+      <!-- Message Validation Alert -->
+      <div class="alert alert-danger d-none align-items-center" id="messageValidationAlert" role="alert">
+        <i class="bi bi-exclamation-triangle-fill flex-shrink-0 me-2"></i>
+        <div>Please enter a message (Message 1 or 2) OR attach a file to send.</div>
+      </div>
+
+      <button class="btn btn-success startbtn mt-4 rounded" id="preStartBtn" type="button" {% if not accounts %}disabled title="Please connect a WhatsApp account first"{% endif %}>
         <i class="bi bi-cursor-fill"></i> START CAMPAIGN
       </button>
-      <button class="btn btn-success mt-4" id="clearAllBtn" type="button">
+      <button class="btn btn-success mt-4 rounded" id="clearAllBtn" type="button">
         <i class="bi bi-eraser-fill"></i> CLEAR ALL
       </button>
 
       <!-- Modal -->
       <div class="modal fade" id="startCampaignModal" tabindex="-1" aria-labelledby="startCampaignLabel"
-        aria-hidden="true">
+        aria-hidden="true" data-bs-backdrop="false" style="background-color: rgba(0,0,0,0.6);">
         <div class="modal-dialog modal-dialog-centered modal-lg">
           <div class="modal-content">
             <div class="modal-header">
@@ -176,15 +273,30 @@
                 </thead>
                 <tbody>
                   {% for account in accounts %}
+                  <tr class="align-middle">
+                    <td class="fw-semibold">{{ account.name }} {% if account.is_default %}<span class="badge bg-success ms-2">Primary</span>{% endif %}</td>
+                    <td>
+                      <div class="form-check d-flex justify-content-center align-items-center mb-0">
+                        <input type="radio" class="form-check-input border-success account-radio m-0" style="width: 1.5em; height: 1.5em; cursor: pointer;" name="selected_accounts" value="{{ account.id }}" id="acc_{{ account.id }}" {% if account.is_default %}checked{% endif %}>
+                        <label class="form-check-label ms-2 fw-bold text-success selected-label" for="acc_{{ account.id }}" style="display: none; cursor: pointer;">Selected</label>
+                      </div>
+                    </td>
+                  </tr>
+                  {% empty %}
                   <tr>
-                    <td>{{ account.name }} {% if account.is_default %}(Primary){% endif %}</td>
-                    <td><input type="checkbox" name="selected_accounts" value="{{ account.id }}"></td>
+                    <td colspan="2" class="text-danger fw-bold py-4">
+                      <i class="bi bi-exclamation-circle-fill fs-4 d-block mb-2"></i>
+                      No WhatsApp Accounts Connected
+                      <br>
+                      <span class="text-muted fw-normal" style="font-size: 0.9em;">Please close this window and click the "Account Control" icon (person icon at the top right) to link your WhatsApp before starting a campaign.</span>
+                    </td>
                   </tr>
                   {% endfor %}
                 </tbody>
               </table>
 
-              <!-- Messaging Mode -->
+              <!-- Messaging Mode (HIDDEN FOR NOW) -->
+              <!--
               <div class="mb-3">
                 <label class="form-label fw-bold">Multi Messaging Mode</label>
                 <select class="form-select" name="messaging_mode">
@@ -193,8 +305,10 @@
                   <option value="mode2">Mode 2</option>
                 </select>
               </div>
+              -->
 
-              <!-- Sending Mode -->
+              <!-- Sending Mode (HIDDEN FOR NOW) -->
+              <!--
               <div class="mb-3">
                 <label class="form-label fw-bold">Sending Mode</label><br>
                 <div class="form-check form-check-inline">
@@ -206,21 +320,30 @@
                   <label class="form-check-label" for="unsafeMode">UnSafe Mode</label>
                 </div>
               </div>
+              -->
 
               <!-- Swipe, Delay, Schedule -->
               <div class="mb-3">
                 <div class="row g-3">
+                  <!-- Swipe Account (HIDDEN)
                   <div class="col-md-4">
                     <label class="form-label fw-bold">Swipe Account After Messages</label>
                     <input type="number" class="form-control" name="swipe_after" value="2">
                   </div>
+                  -->
                   <div class="col-md-4">
                     <label class="form-label fw-bold">Delay Between Messages (sec)</label>
-                    <input type="number" class="form-control" name="delay" placeholder="e.g. 5">
+                    <input type="number" class="form-control" name="delay" min="1" oninput="if(this.value < 1 && this.value !== '') this.value = 1;" placeholder="e.g. 5">
                   </div>
                   <div class="col-md-4">
-                    <label class="form-label fw-bold">Schedule Your Message</label>
-                    <input type="datetime-local" class="form-control" name="schedule_time">
+                    <label class="form-label fw-bold"><i class="bi bi-pause-circle-fill text-success me-1"></i> Break After (Msgs)</label>
+                    <input type="number" class="form-control" name="batch_break_interval" min="1" max="50" value="15" oninput="if(this.value < 1 && this.value !== '') this.value = 1;" placeholder="Default = 15">
+                    <div class="form-text text-muted" style="font-size: 0.72rem;">Trigger (Default = 15 msgs).</div>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label fw-bold"><i class="bi bi-clock-history text-success me-1"></i> Break Duration (Mins)</label>
+                    <input type="number" class="form-control" name="break_duration" min="1" max="10" value="3" oninput="if(this.value < 1 && this.value !== '') this.value = 1;" placeholder="Default = 3">
+                    <div class="form-text text-muted" style="font-size: 0.72rem;">Duration (1-10 mins).</div>
                   </div>
                 </div>
               </div>
@@ -243,5 +366,284 @@
       <!-- End Modal -->
     </div>
   </div>
+  </div>
 </form>
+
+<script>
+function insertSpintax() {
+    // Find the currently active tab's textarea
+    const activeTab = document.querySelector('.tab-pane.active textarea');
+    if (activeTab) {
+        const textToInsert = '{Hi|Hello|Hey}';
+        const startPos = activeTab.selectionStart;
+        const endPos = activeTab.selectionEnd;
+        
+        activeTab.value = activeTab.value.substring(0, startPos)
+            + textToInsert
+            + activeTab.value.substring(endPos, activeTab.value.length);
+            
+        // Focus and move cursor to highlight the word Options for easy replacing
+        activeTab.focus();
+        activeTab.selectionStart = startPos + 1;
+        activeTab.selectionEnd = startPos + textToInsert.length - 1;
+    }
+}
+
+// --- FRIENDLY NUMBERS AJAX LOGIC ---
+const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+function fetchFriendlyNumbers() {
+    fetch('/api/friendly-numbers/', {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.success) {
+            const tbody = document.getElementById('friendlyNumbersTableBody');
+            tbody.innerHTML = '';
+            if(data.numbers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No friendly numbers found.</td></tr>';
+                return;
+            }
+            
+            data.numbers.forEach(num => {
+                const statusBadge = num.is_active 
+                    ? '<span class="badge bg-success">Active</span>' 
+                    : '<span class="badge bg-secondary">Disabled</span>';
+                    
+                const toggleAction = num.is_active ? 'Disable' : 'Enable';
+                
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${num.name || '-'}</td>
+                        <td>${num.number}</td>
+                        <td>${statusBadge}</td>
+                        <td>
+                            <button class="btn btn-sm ${num.is_active ? 'btn-warning' : 'btn-success'}" onclick="toggleFriendlyNumber(${num.id})">${toggleAction}</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteFriendlyNumber(${num.id})">Delete</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        } else {
+            const tbody = document.getElementById('friendlyNumbersTableBody');
+            tbody.innerHTML = `<tr><td colspan="4" class="text-center text-danger">Error: ${data.error || 'Failed to load numbers'}</td></tr>`;
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        const tbody = document.getElementById('friendlyNumbersTableBody');
+        tbody.innerHTML = `<tr><td colspan="4" class="text-center text-danger">Network error: ${err.message || err}</td></tr>`;
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('friendly-numbers-form');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            
+            fetch('/api/friendly-numbers/save/', {
+                method: 'POST',
+                headers: { 
+                    'X-CSRFToken': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) {
+                    showFriendlyAlert(`Success! Added: ${data.added}, Duplicates Ignored: ${data.duplicates}, Invalid Ignored: ${data.invalid}`, 'success');
+                    this.reset();
+                    document.getElementById('friendlyNumberUploadSection').classList.add('d-none');
+                    fetchFriendlyNumbers();
+                } else {
+                    showFriendlyAlert(`Error: ${data.error}`, 'danger');
+                }
+            })
+            .catch(err => showFriendlyAlert("Server error occurred.", 'danger'));
+        });
+    }
+    
+    // Setup Confirm Delete Button
+    const confirmBtn = document.getElementById('confirmDeleteBtn');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', function() {
+            if (!window.numberToDeleteId) return;
+            
+            fetch(`/api/friendly-numbers/delete/${window.numberToDeleteId}/`, {
+                method: 'POST',
+                headers: { 
+                    'X-CSRFToken': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) {
+                    fetchFriendlyNumbers();
+                    showFriendlyAlert("Number deleted successfully.", "success");
+                } else {
+                    showFriendlyAlert(`Error deleting: ${data.error}`, "danger");
+                }
+                const deleteModalEl = document.getElementById('deleteConfirmModal');
+                const modalInstance = bootstrap.Modal.getInstance(deleteModalEl) || new bootstrap.Modal(deleteModalEl);
+                modalInstance.hide();
+                window.numberToDeleteId = null;
+            });
+        });
+    }
+});
+
+function showFriendlyAlert(msg, type) {
+    const alertDiv = document.getElementById('friendlyNumbersAlerts');
+    if (alertDiv) {
+        alertDiv.innerHTML = `
+            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                ${msg}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
+        // Auto dismiss success alerts after 5 seconds
+        if (type === 'success') {
+            setTimeout(() => { alertDiv.innerHTML = ''; }, 5000);
+        }
+    } else {
+        alert(msg); // Fallback
+    }
+}
+
+function toggleFriendlyNumber(id) {
+    fetch(`/api/friendly-numbers/toggle/${id}/`, {
+        method: 'POST',
+        headers: { 
+            'X-CSRFToken': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.success) fetchFriendlyNumbers();
+    });
+}
+
+function deleteFriendlyNumber(id) {
+    window.numberToDeleteId = id;
+    const deleteModalEl = document.getElementById('deleteConfirmModal');
+    const modalInstance = new bootstrap.Modal(deleteModalEl);
+    modalInstance.show();
+}
+</script>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true" style="z-index: 1060;">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title" id="deleteConfirmModalLabel">Confirm Delete</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center py-4">
+        Are you sure you want to delete this number?
+      </div>
+      <div class="modal-footer justify-content-center">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Yes, Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Friendly Numbers Management Modal -->
+<div class="modal fade" id="friendlyNumbersModal" tabindex="-1" aria-labelledby="friendlyNumbersModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="friendlyNumbersModalLabel"><i class="bi bi-people-fill text-white me-2"></i>Manage Friendly Numbers</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        
+        <div id="friendlyNumbersAlerts"></div>
+        
+        <!-- Table Section -->
+        <div class="table-responsive mb-3" style="max-height: 300px; overflow-y: auto;">
+            <table class="table table-bordered table-sm align-middle text-center">
+                <thead class="table-light">
+                    <tr>
+                        <th>Name</th>
+                        <th>Number</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="friendlyNumbersTableBody">
+                    <tr><td colspan="4" class="text-center text-muted">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <button class="btn btn-outline-success w-100 mb-3" onclick="document.getElementById('friendlyNumberUploadSection').classList.toggle('d-none')">
+            <i class="bi bi-plus-circle me-1"></i> Add New Numbers
+        </button>
+        
+        <!-- Upload Form Section (Hidden by default) -->
+        <div id="friendlyNumberUploadSection" class="d-none border p-3 rounded bg-light">
+            <form id="friendly-numbers-form" enctype="multipart/form-data">
+                <div class="mb-3">
+                    <label class="form-label">Upload Excel/CSV File</label>
+                    <input type="file" name="excel_file" class="form-control" accept=".csv, .xlsx">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Or Enter Manual Numbers (comma separated)</label>
+                    <textarea class="form-control" name="manual_numbers" rows="3" placeholder="e.g. 9876543210, +919123456789"></textarea>
+                </div>
+                <button type="submit" form="friendly-numbers-form" class="btn btn-success w-100">Save Numbers</button>
+            </form>
+        </div>
+        
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('preStartBtn').addEventListener('click', function() {
+    const contactAlert = document.getElementById('contactValidationAlert');
+    const messageAlert = document.getElementById('messageValidationAlert');
+    
+    // Hide alerts on new click
+    contactAlert.classList.add('d-none');
+    messageAlert.classList.add('d-none');
+    
+    // 1. Validate Contacts
+    const excelFiles = document.getElementById('excelUpload').files.length;
+    const manualNumbers = document.getElementById('manualNumbers').value.trim();
+    
+    if (excelFiles === 0 && !manualNumbers) {
+        contactAlert.classList.remove('d-none');
+        contactAlert.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+    }
+    
+    // 2. Validate Message Content
+    const msg1 = document.querySelector('textarea[name="message_1"]').value.trim();
+    const msg2 = document.querySelector('textarea[name="message_2"]').value.trim();
+    const attachments = document.getElementById('attachmentUpload').files.length;
+    
+    if (!msg1 && !msg2 && attachments === 0) {
+        messageAlert.classList.remove('d-none');
+        return;
+    }
+    
+    // All validations passed, open the modal safely!
+    const startModal = new bootstrap.Modal(document.getElementById('startCampaignModal'));
+    startModal.show();
+});
+</script>
 {% endblock %}

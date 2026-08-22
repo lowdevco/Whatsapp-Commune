@@ -23,54 +23,13 @@
   <form id="settingsForm" method="post">
     {% csrf_token %}
 
-    <!-- 1. Account Settings -->
+    <!-- 1. API Configuration -->
     <div class="form-section">
-      <div class="section-title">1. Account Settings</div>
+      <div class="section-title">1. API Configuration</div>
       <div class="mb-3">
-        <label class="form-label">Account Nickname</label>
-        <input type="text" name="nickname" class="form-control" placeholder="e.g. Main Account"/>
-      </div>
-      <div class="form-check">
-        <input class="form-check-input" type="checkbox" id="activeStatus" name="activeStatus" checked>
-        <label class="form-check-label" for="activeStatus">Mark Account as Active</label>
-      </div>
-    </div>
-
-    <!-- 2. Scheduling -->
-    <div class="form-section">
-      <div class="section-title">2. Scheduling</div>
-      <div class="mb-3">
-        <label class="form-label">Send At</label>
-        <input type="datetime-local" name="send_at" class="form-control"/>
-      </div>
-      <div class="form-check">
-        <input class="form-check-input" type="checkbox" id="repeatSchedule" name="repeatSchedule">
-        <label class="form-check-label" for="repeatSchedule">Repeat Daily</label>
-      </div>
-    </div>
-
-    <!-- 3. Campaign Logs -->
-    <div class="form-section">
-      <div class="section-title">3. Campaign Logs</div>
-      <div class="mb-3">
-        <label class="form-label">Enable Logging</label>
-        <select class="form-select" name="logging">
-          <option value="enabled">Enabled</option>
-          <option value="disabled">Disabled</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- 4. Privacy & Security -->
-    <div class="form-section mb-5">
-      <div class="section-title">4. Privacy & Security</div>
-      <div class="form-check">
-        <input class="form-check-input" type="checkbox" id="encryption" name="encryption" checked>
-        <label class="form-check-label" for="encryption">Encrypt Data</label>
-      </div>
-      <div class="form-check">
-        <input class="form-check-input" type="checkbox" id="backup" name="backup">
-        <label class="form-check-label" for="backup">Enable Data Backup</label>
+        <label class="form-label">Gemini AI API Key</label>
+        <input type="password" name="gemini_api_key" class="form-control" value="{{ gemini_api_key|default:'' }}" placeholder="AIzaSy..."/>
+        <small class="text-muted">This key is required to use the AI Spintax feature safely.</small>
       </div>
     </div>
 

@@ -12,25 +12,98 @@
 
 <!-- MAIN SECTION -->
 <div class="container runareacontainer mt-3 py-4">
-  <h4 class="text-white bg-success p-2 rounded">🚀 Deploy Campaign</h4>
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags }} alert-dismissible fade show rounded-0 shadow-sm" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+  <h4 class="text-white bg-success p-2 rounded">
+    {% if campaign.name and campaign.name.strip %}{{ campaign.name }}{% else %}Campaign #{{ campaign.id }}{% endif %}
+  </h4>
 
   <!-- Campaign Summary -->
   <div class="mb-4">
     <strong>Selected Account:</strong> {{ account.name }} ({{ account.number }})<br>
-    <strong>Total Numbers:</strong> {{ campaign.numbers|linebreaksbr }}<br>
+    <div class="mt-3 mb-4">
+      <div class="d-flex align-items-center mb-3">
+        <strong class="fs-5 me-2 text-secondary">Total Numbers:</strong> 
+        <span class="fs-4 fw-bold text-success">{{ campaign.numbers.splitlines|length }}</span>
+      </div>
+      <div class="d-flex flex-wrap gap-2 p-3 border rounded bg-light" style="max-height: 250px; overflow-y: auto;">
+        {% for num in campaign.numbers.splitlines %}
+          <span class="badge rounded bg-white text-dark border px-3 py-2 fs-6 fw-medium"><i class="bi bi-telephone text-primary me-2"></i>{{ num }}</span>
+        {% endfor %}
+      </div>
+    </div>
     <strong>Message 1:</strong>
-    <div class="border rounded p-2 bg-light">{{ campaign.message1|linebreaksbr }}</div>
+    <div class="whatsapp-bubble mt-2 mb-3 shadow-sm">
+      <div style="max-height: 400px; overflow-y: auto; padding-right: 5px;">
+        {{ campaign.message1|linebreaksbr }}
+      </div>
+    </div>
 
     {% if campaign.message2 %}
     <strong>Message 2:</strong>
-    <div class="border rounded p-2 bg-light">{{ campaign.message2|linebreaksbr }}</div>
+    <div class="whatsapp-bubble mt-2 mb-3 shadow-sm">
+      <div style="max-height: 400px; overflow-y: auto; padding-right: 5px;">
+        {{ campaign.message2|linebreaksbr }}
+      </div>
+    </div>
     {% endif %}
 
     {% if campaign.attachment %}
-    <strong>Attachment:</strong>
-    <a href="{{ campaign.attachment.url }}" class="btn btn-sm btn-outline-primary" target="_blank">
-      View Attachment
-    </a>
+    <div class="mt-3 mb-2">
+      <strong>Attachment:</strong>
+      <div class="mt-2">
+        <a href="javascript:void(0)" class="text-decoration-none" data-bs-toggle="modal" data-bs-target="#attachmentModal">
+          <div class="d-inline-flex align-items-center p-2 border rounded bg-light hover-shadow transition" style="max-width: 350px; cursor: pointer;">
+            <div class="bg-white border rounded d-flex align-items-center justify-content-center me-3 shadow-sm" style="width: 45px; height: 45px;">
+              <i class="bi bi-paperclip text-success fs-4"></i>
+            </div>
+            <div class="text-dark">
+              <div class="fw-semibold text-truncate" style="font-size: 14px; max-width: 200px;">View Attached Media</div>
+              <div class="text-muted" style="font-size: 12px;">Click to preview</div>
+            </div>
+            <i class="bi bi-eye ms-3 text-muted"></i>
+          </div>
+        </a>
+      </div>
+    </div>
+
+    <!-- Attachment Preview Modal -->
+    <div class="modal fade" id="attachmentModal" tabindex="-1" aria-labelledby="attachmentModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content rounded border-0 shadow">
+          <div class="modal-header bg-success text-white">
+            <h5 class="modal-title fw-bold" id="attachmentModalLabel"><i class="bi bi-paperclip me-2"></i>Attachment Preview</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body text-center p-4">
+            {% if campaign.attachment %}
+              {% if campaign.attachment.url|lower|slice:"-4:" == ".png" or campaign.attachment.url|lower|slice:"-4:" == ".jpg" or campaign.attachment.url|lower|slice:"-5:" == ".jpeg" or campaign.attachment.url|lower|slice:"-5:" == ".webp" or campaign.attachment.url|lower|slice:"-4:" == ".gif" %}
+                <img src="{{ campaign.attachment.url }}" alt="Attachment" class="img-fluid rounded border shadow-sm" style="max-height: 480px; object-fit: contain;">
+              {% elif campaign.attachment.url|lower|slice:"-4:" == ".mp4" or campaign.attachment.url|lower|slice:"-4:" == ".mov" %}
+                <video src="{{ campaign.attachment.url }}" controls class="w-100 rounded border" style="max-height: 480px;"></video>
+              {% elif campaign.attachment.url|lower|slice:"-4:" == ".pdf" %}
+                <iframe src="{{ campaign.attachment.url }}" class="w-100 border rounded" style="height: 480px;"></iframe>
+              {% else %}
+                <div class="p-4 bg-light border rounded">
+                  <i class="bi bi-file-earmark-text text-secondary fs-1 d-block mb-2"></i>
+                  <h6 class="fw-bold">{{ campaign.attachment.name }}</h6>
+                  <p class="text-muted small mb-0">Attached file is ready for sending.</p>
+                </div>
+              {% endif %}
+            {% endif %}
+          </div>
+          <div class="modal-footer border-0">
+            <button type="button" class="btn btn-secondary rounded" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
     {% endif %}
   </div>
 
@@ -38,19 +111,32 @@
   <div class="step-box">
     <div class="row align-items-center mb-3">
       <div class="col">
-        <strong>Use your mobile to open WhatsApp and scan the QR code</strong>
+        <strong id="campaign-title">Ready to launch campaign</strong>
       </div>
-      <div class="col-auto">
-        <div class="status-text text-end" id="campaign-status">Status: Not Initialised</div>
-      </div>
+        <div class="col-auto d-flex flex-column align-items-end gap-2">
+          <span class="badge bg-secondary rounded-pill px-3 py-2 fs-6 shadow-sm transition" id="campaign-status">
+            <i class="bi bi-clock me-1"></i> Not Initialised
+          </span>
+          
+          <!-- NEW: Download Error Report Button (Hidden unless errors exist) -->
+          <a href="{% url 'download_campaign_report' campaign.id %}" id="download-error-btn" class="btn btn-sm btn-outline-danger shadow-sm rounded-pill px-3" style="display:{% if campaign.total_failed > 0 %}inline-block{% else %}none{% endif %};">
+            <i class="bi bi-download me-1"></i> Download Errors
+          </a>
+        </div>
     </div>
 
     <!-- Deploy Button -->
     <form method="post" action="{% url 'start_messaging' campaign.id %}?account_id={{ account.id }}" id="start-form">
       {% csrf_token %}
-      <button type="submit" class="btn btn-outline-success mb-3" id="start-btn">
-        <i class="bi bi-play-fill"></i> START MESSAGING
+      {% if not campaign.numbers %}
+      <button type="button" class="btn btn-secondary mb-3 shadow-sm px-4 rounded" disabled>
+        <i class="bi bi-x-circle-fill me-1"></i> 0 Numbers to Start Message
       </button>
+      {% else %}
+      <button type="submit" class="btn btn-success mb-3 shadow-sm px-4 pulse-animation rounded" id="start-btn">
+        <i class="bi bi-play-circle-fill me-1"></i> Start Messaging
+      </button>
+      {% endif %}
     </form>
 
 
@@ -69,30 +155,53 @@
     </div>
   </div>
 
+  <!-- Anti-Ban Cooling Break Alert Banner -->
+  <div class="alert alert-info border-info d-none align-items-center shadow-sm rounded-3 p-3 mt-4" id="cooling-break-banner" role="alert">
+    <div class="spinner-grow spinner-grow-sm text-info me-3 flex-shrink-0" role="status"></div>
+    <div>
+      <h6 class="fw-bold mb-1 text-dark"><i class="bi bi-cup-hot text-info me-1"></i> Scheduled Delivery Break</h6>
+      <span class="text-secondary small" id="cooling-banner-text">Taking a short scheduled break to optimize delivery and message queueing. Campaign will resume automatically!</span>
+    </div>
+  </div>
+
   <!-- Progress Bar -->
   <div class="step-box mt-4">
     <div class="mb-2"><strong>Progress</strong></div>
-    <div class="progress mb-3" style="height: 25px;">
-      <div class="progress-bar bg-success" id="progress-bar" role="progressbar" style="width: 0%" aria-valuenow="0"
-        aria-valuemin="0" aria-valuemax="100">
-        0%
-      </div>
+    <div class="progress mb-3 shadow-sm" style="height: 25px; border-radius: 12px; overflow: hidden;" id="progress-container">
+      <div class="progress-bar progress-bar-striped progress-bar-animated bg-success fw-bold" id="progress-bar-success" role="progressbar" style="width: 0%"></div>
+      <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning text-dark fw-bold" id="progress-bar-warning" role="progressbar" style="width: 0%"></div>
+      <div class="progress-bar progress-bar-striped progress-bar-animated bg-danger fw-bold" id="progress-bar-danger" role="progressbar" style="width: 0%"></div>
     </div>
-    <div class="row text-center">
+    <div class="row text-center g-2 mt-2">
       <div class="col">
-        <span class="badge bg-secondary" id="pending-count">Pending: 0</span>
+        <div class="border rounded p-2 bg-light h-100">
+          <div class="text-muted small fw-bold text-uppercase">Pending</div>
+          <div class="fs-4 fw-bold text-secondary" id="pending-count">0</div>
+        </div>
       </div>
       <div class="col">
-        <span class="badge bg-primary" id="processing-count">Processing: 0</span>
+        <div class="border rounded p-2 bg-light h-100">
+          <div class="text-primary small fw-bold text-uppercase">Processing</div>
+          <div class="fs-4 fw-bold text-primary" id="processing-count">0</div>
+        </div>
       </div>
       <div class="col">
-        <span class="badge bg-success" id="sent-count">Sent: 0</span>
+        <div class="border rounded p-2 bg-light h-100">
+          <div class="text-success small fw-bold text-uppercase">Sent</div>
+          <div class="fs-4 fw-bold text-success" id="sent-count">0</div>
+        </div>
       </div>
       <div class="col">
-        <span class="badge bg-danger" id="failed-count">Failed: 0</span>
+        <div class="border rounded p-2 bg-light h-100">
+          <div class="text-danger small fw-bold text-uppercase">Failed</div>
+          <div class="fs-4 fw-bold text-danger" id="failed-count">0</div>
+        </div>
       </div>
       <div class="col">
-        <span class="badge bg-warning" id="invalid-count">Invalid: 0</span>
+        <div class="border rounded p-2 bg-light h-100">
+          <div class="text-warning small fw-bold text-uppercase">Invalid</div>
+          <div class="fs-4 fw-bold text-warning" id="invalid-count">0</div>
+        </div>
       </div>
     </div>
   </div>
@@ -106,7 +215,7 @@
       <table class="table table-bordered table-striped">
         <thead class="table-light sticky-top">
           <tr>
-            <th>Name/Number</th>
+            <th>Number</th>
             <th>Status</th>
             <th>Timestamp</th>
           </tr>
@@ -127,7 +236,7 @@
   </div>
 
   <!-- Important Notes -->
-  <div class="important-notes mt-4">
+  <!-- <div class="important-notes mt-4">
     <strong>Important Notes</strong>
     <ol>
       <li>Ensure the app stays open during the entire sending process.</li>
@@ -136,7 +245,7 @@
       <li>You can pause, resume, or stop the campaign at any time using the control buttons.</li>
     </ol>
   </div>
-</div>
+</div> -->
 
 <!-- Real-time Status Updater -->
 <script>
@@ -168,14 +277,24 @@
           campaignRunning = true;
           startStatusUpdates();
         } else {
-          alert('Error: ' + data.message);
+          Swal.fire({
+            title: 'Error',
+            text: data.message,
+            icon: 'error',
+            customClass: { confirmButton: 'rounded', popup: 'rounded' }
+          });
           startBtn.disabled = false;
           startBtn.innerHTML = '<i class="bi bi-play-fill"></i> START MESSAGING';
         }
       })
       .catch(err => {
         console.error('Error:', err);
-        alert('An error occurred while starting the campaign');
+        Swal.fire({
+          title: 'Error',
+          text: 'An error occurred while starting the campaign',
+          icon: 'error',
+          customClass: { confirmButton: 'rounded', popup: 'rounded' }
+        });
         startBtn.disabled = false;
         startBtn.innerHTML = '<i class="bi bi-play-fill"></i> START MESSAGING';
       });
@@ -189,7 +308,69 @@
 
         // Update global campaign status
         const overallStatus = data.overall_status || "Not Started";
-        document.getElementById("campaign-status").innerText = "Status: " + overallStatus;
+        let statusText = overallStatus;
+        let badgeClass = "badge rounded-pill px-3 py-2 fs-6 shadow-sm transition ";
+        let iconHtml = "";
+
+        const coolingBanner = document.getElementById("cooling-break-banner");
+
+        if (overallStatus === "Failed" && data.error) {
+            statusText += " - " + data.error;
+            badgeClass += "bg-danger";
+            iconHtml = '<i class="bi bi-exclamation-triangle-fill me-1"></i> ';
+            if (coolingBanner) coolingBanner.classList.replace('d-flex', 'd-none');
+        } else if (overallStatus.includes("Taking a Break") || overallStatus.includes("Cooling") || overallStatus.includes("Break")) {
+            badgeClass += "bg-info text-dark pulse-animation";
+            iconHtml = '<i class="bi bi-cup-hot-fill me-1 text-dark"></i> ';
+            if (coolingBanner) {
+              coolingBanner.classList.replace('d-none', 'd-flex');
+              const bannerText = document.getElementById("cooling-banner-text");
+              if (bannerText) bannerText.innerText = `Taking a short scheduled break (${overallStatus}) to optimize message queueing and delivery pace. Sending will resume automatically!`;
+            }
+        } else if (overallStatus === "Not Started") {
+            badgeClass += "bg-secondary";
+            iconHtml = '<i class="bi bi-clock me-1"></i> ';
+            if (coolingBanner) coolingBanner.classList.replace('d-flex', 'd-none');
+        } else if (overallStatus === "Running" || overallStatus === "Processing") {
+            badgeClass += "bg-primary pulse-animation";
+            iconHtml = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> ';
+            if (coolingBanner) coolingBanner.classList.replace('d-flex', 'd-none');
+        } else if (overallStatus === "Completed") {
+            badgeClass += "bg-success";
+            iconHtml = '<i class="bi bi-check-circle-fill me-1"></i> ';
+            if (coolingBanner) coolingBanner.classList.replace('d-flex', 'd-none');
+        } else if (overallStatus === "Paused") {
+            badgeClass += "bg-warning text-dark";
+            iconHtml = '<i class="bi bi-pause-circle-fill me-1"></i> ';
+            if (coolingBanner) coolingBanner.classList.replace('d-flex', 'd-none');
+        } else if (overallStatus === "Stopped") {
+            badgeClass += "bg-dark";
+            iconHtml = '<i class="bi bi-stop-circle-fill me-1"></i> ';
+            if (coolingBanner) coolingBanner.classList.replace('d-flex', 'd-none');
+        } else {
+            badgeClass += "bg-secondary";
+            if (coolingBanner) coolingBanner.classList.replace('d-flex', 'd-none');
+        }
+
+        const statusEl = document.getElementById("campaign-status");
+        statusEl.className = badgeClass;
+        statusEl.innerHTML = iconHtml + statusText;
+
+        // Update dynamic title
+        const titleEl = document.getElementById("campaign-title");
+        if (overallStatus.includes("Taking a Break") || overallStatus.includes("Cooling") || overallStatus.includes("Break")) {
+          titleEl.innerText = `Scheduled Delivery Break (${overallStatus})`;
+        } else if (overallStatus === "Running" || overallStatus === "Processing") {
+          titleEl.innerText = "Campaign is actively running...";
+        } else if (overallStatus === "Paused") {
+          titleEl.innerText = "Campaign is paused";
+        } else if (overallStatus === "Completed") {
+          titleEl.innerText = "Campaign completed successfully!";
+        } else if (overallStatus === "Stopped" || overallStatus === "Failed") {
+          titleEl.innerText = "Campaign stopped";
+        } else {
+          titleEl.innerText = "Ready to launch campaign";
+        }
 
         // Update button states
         updateButtonStates(overallStatus);
@@ -199,22 +380,33 @@
 
         // Update each row
         if (data.statuses) {
-          for (let [num, status] of Object.entries(data.statuses)) {
+          for (let [num, info] of Object.entries(data.statuses)) {
+            const status = typeof info === 'string' ? info : info.status;
+            const timestamp = (typeof info === 'object' && info.timestamp) ? info.timestamp : "-";
+
             const rowId = "row-" + num.replace(/[^a-z0-9]/gi, '-').toLowerCase();
             let row = document.getElementById(rowId);
             if (row) {
               const statusCell = row.querySelector(".status");
               const timestampCell = row.querySelector(".timestamp");
-              statusCell.innerHTML = `<span class="badge ${getStatusBadgeClass(status)}">${status}</span>`;
-              timestampCell.innerText = new Date().toLocaleTimeString();
+              
+              // Only update DOM if status actually changed
+              if (statusCell.innerText.trim() !== status) {
+                  statusCell.innerHTML = `<span class="badge ${getStatusBadgeClass(status)}">${status}</span>`;
+                  if (timestamp !== "-") {
+                      timestampCell.innerText = timestamp;
+                  } else {
+                      timestampCell.innerText = new Date().toLocaleTimeString();
+                  }
+              }
             } else {
               console.warn("Row not found for number:", num);
             }
           }
         }
 
-        // Stop polling if campaign is completed/stopped
-        if (overallStatus === 'Completed' || overallStatus === 'Stopped') {
+        // Stop polling if campaign is completed/stopped/failed
+        if (overallStatus === 'Completed' || overallStatus === 'Stopped' || overallStatus === 'Failed') {
           campaignRunning = false;
           stopStatusUpdates();
           console.log("Campaign finished, polling stopped.");
@@ -229,7 +421,9 @@
     const resumeBtn = document.getElementById("resume-btn");
     const stopBtn = document.getElementById("stop-btn");
 
-    if (status === "Running") {
+    if (!status) return;
+
+    if (status === "Running" || status === "Processing" || status.includes("Taking a Break") || status.includes("Cooling") || status.includes("Break")) {
       startBtn.style.display = "none";
       pauseBtn.style.display = "inline-block";
       resumeBtn.style.display = "none";
@@ -241,14 +435,14 @@
       resumeBtn.style.display = "inline-block";
       stopBtn.style.display = "inline-block";
       stopBtn.disabled = false;
-    } else if (status === "Completed" || status === "Stopped") {
+    } else if (status === "Completed" || status === "Stopped" || status === "Failed") {
       // Hide all buttons
       startBtn.style.display = "none";
       pauseBtn.style.display = "none";
       resumeBtn.style.display = "none";
       stopBtn.style.display = "none";
     } else {
-      // Default state
+      // Default state (Not Started)
       startBtn.style.display = "inline-block";
       pauseBtn.style.display = "none";
       resumeBtn.style.display = "none";
@@ -259,21 +453,44 @@
 
   function updateProgress(counts) {
     const total = counts.Pending + counts.Processing + counts.Sent + counts.Failed + counts.Invalid;
-    const completed = counts.Sent + counts.Failed + counts.Invalid;
-    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const sentCount = counts.Sent || 0;
+    const invalidCount = counts.Invalid || 0;
+    const failedCount = counts.Failed || 0;
+    
+    const sentPercentage = total > 0 ? Math.round((sentCount / total) * 100) : 0;
+    const invalidPercentage = total > 0 ? Math.round((invalidCount / total) * 100) : 0;
+    const failedPercentage = total > 0 ? Math.round((failedCount / total) * 100) : 0;
 
-    // Update progress bar
-    const progressBar = document.getElementById('progress-bar');
-    progressBar.style.width = percentage + '%';
-    progressBar.setAttribute('aria-valuenow', percentage);
-    progressBar.innerText = percentage + '%';
+    // --- Reveal the download button if there are failures or invalid numbers ---
+    const errorBtn = document.getElementById('download-error-btn');
+    if (errorBtn && (failedCount > 0 || invalidCount > 0)) {
+        errorBtn.style.display = 'inline-block';
+    }
+
+    // --- Update 3-part stacked progress bars ---
+    const successBar = document.getElementById('progress-bar-success');
+    const warningBar = document.getElementById('progress-bar-warning');
+    const dangerBar = document.getElementById('progress-bar-danger');
+    
+    if(successBar) {
+        successBar.style.width = sentPercentage + '%';
+        successBar.innerText = sentPercentage > 0 ? sentPercentage + '% Sent' : '';
+    }
+    if(warningBar) {
+        warningBar.style.width = invalidPercentage + '%';
+        warningBar.innerText = invalidPercentage > 0 ? invalidPercentage + '% Invalid' : '';
+    }
+    if(dangerBar) {
+        dangerBar.style.width = failedPercentage + '%';
+        dangerBar.innerText = failedPercentage > 0 ? failedPercentage + '% Failed' : '';
+    }
 
     // Update count badges
-    document.getElementById('pending-count').innerText = `Pending: ${counts.Pending || 0}`;
-    document.getElementById('processing-count').innerText = `Processing: ${counts.Processing || 0}`;
-    document.getElementById('sent-count').innerText = `Sent: ${counts.Sent || 0}`;
-    document.getElementById('failed-count').innerText = `Failed: ${counts.Failed || 0}`;
-    document.getElementById('invalid-count').innerText = `Invalid: ${counts.Invalid || 0}`;
+    document.getElementById('pending-count').innerText = counts.Pending || 0;
+    document.getElementById('processing-count').innerText = counts.Processing || 0;
+    document.getElementById('sent-count').innerText = counts.Sent || 0;
+    document.getElementById('failed-count').innerText = counts.Failed || 0;
+    document.getElementById('invalid-count').innerText = counts.Invalid || 0;
   }
 
   function getStatusBadgeClass(status) {
@@ -295,14 +512,31 @@
       .then(res => res.json())
       .then(data => {
         if (data.success) {
-          alert("Campaign paused");
+          updateButtonStates("Paused");
+          updateStatus();
+          Swal.fire({
+            title: 'Paused',
+            text: 'Campaign paused',
+            icon: 'info',
+            customClass: { confirmButton: 'rounded', popup: 'rounded' }
+          });
         } else {
-          alert("Error: " + data.message);
+          Swal.fire({
+            title: 'Error',
+            text: data.message,
+            icon: 'error',
+            customClass: { confirmButton: 'rounded', popup: 'rounded' }
+          });
         }
       })
       .catch(err => {
         console.error('Error:', err);
-        alert('An error occurred while pausing the campaign');
+        Swal.fire({
+          title: 'Error',
+          text: 'An error occurred while pausing the campaign',
+          icon: 'error',
+          customClass: { confirmButton: 'rounded', popup: 'rounded' }
+        });
       });
   }
 
@@ -314,38 +548,87 @@
       .then(res => res.json())
       .then(data => {
         if (data.success) {
-          alert("Campaign resumed");
+          updateButtonStates("Running");
+          updateStatus();
+          Swal.fire({
+            title: 'Resumed',
+            text: 'Campaign resumed',
+            icon: 'success',
+            customClass: { confirmButton: 'rounded', popup: 'rounded' }
+          });
         } else {
-          alert("Error: " + data.message);
+          Swal.fire({
+            title: 'Error',
+            text: data.message,
+            icon: 'error',
+            customClass: { confirmButton: 'rounded', popup: 'rounded' }
+          });
         }
       })
       .catch(err => {
         console.error('Error:', err);
-        alert('An error occurred while resuming the campaign');
+        Swal.fire({
+          title: 'Error',
+          text: 'An error occurred while resuming the campaign',
+          icon: 'error',
+          customClass: { confirmButton: 'rounded', popup: 'rounded' }
+        });
       });
   }
 
   function stopCampaign() {
-    if (confirm("Are you sure you want to stop the campaign? This action cannot be undone.")) {
-      fetch("{% url 'stop_campaign' campaign.id %}", {
-        method: 'POST',
-        headers: { 'X-CSRFToken': '{{ csrf_token }}' }
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (data.success) {
-            alert("Campaign stopped");
-            campaignRunning = false;
-            stopStatusUpdates();
-          } else {
-            alert("Error: " + data.message);
-          }
+    Swal.fire({
+      title: "Stop Campaign?",
+      text: "Are you sure you want to stop the campaign? This action cannot be undone.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#d33",
+      cancelButtonColor: "#6c757d",
+      confirmButtonText: "Yes, stop it!",
+      customClass: {
+        confirmButton: 'rounded-0',
+        cancelButton: 'rounded-0',
+        popup: 'rounded-0'
+      }
+    }).then((result) => {
+      if (result.isConfirmed) {
+        fetch("{% url 'stop_campaign' campaign.id %}", {
+          method: 'POST',
+          headers: { 'X-CSRFToken': '{{ csrf_token }}' }
         })
-        .catch(err => {
-          console.error('Error:', err);
-          alert('An error occurred while stopping the campaign');
-        });
-    }
+          .then(res => res.json())
+          .then(data => {
+            if (data.success) {
+              updateButtonStates("Stopped");
+              updateStatus();
+              Swal.fire({
+                title: "Stopped!",
+                text: "Campaign stopped",
+                icon: "success",
+                customClass: { confirmButton: 'rounded-0', popup: 'rounded-0' }
+              });
+              campaignRunning = false;
+              stopStatusUpdates();
+            } else {
+              Swal.fire({
+                title: "Error",
+                text: data.message,
+                icon: "error",
+                customClass: { confirmButton: 'rounded-0', popup: 'rounded-0' }
+              });
+            }
+          })
+          .catch(err => {
+            console.error('Error:', err);
+            Swal.fire({
+              title: "Error",
+              text: "An error occurred while stopping the campaign",
+              icon: "error",
+              customClass: { confirmButton: 'rounded-0', popup: 'rounded-0' }
+            });
+          });
+      }
+    });
   }
 
   function startStatusUpdates() {
@@ -426,6 +709,46 @@
     position: sticky;
     top: 0;
     z-index: 10;
+  }
+
+  /* --- New Premium UI Styles --- */
+  .whatsapp-bubble {
+    background-color: #dcf8c6;
+    border-radius: 12px;
+    border-top-left-radius: 0px;
+    padding: 12px 16px;
+    color: #303030;
+    font-size: 15px;
+    max-width: 80%;
+    position: relative;
+    border: 1px solid rgba(0,0,0,0.05);
+  }
+  
+  .whatsapp-bubble::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -10px;
+    width: 0;
+    height: 0;
+    border-top: 10px solid #dcf8c6;
+    border-left: 10px solid transparent;
+  }
+
+  @keyframes pulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(25, 135, 84, 0.4);
+    }
+    70% {
+      box-shadow: 0 0 0 10px rgba(25, 135, 84, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(25, 135, 84, 0);
+    }
+  }
+
+  .pulse-animation {
+    animation: pulse 2s infinite;
   }
 </style>
 

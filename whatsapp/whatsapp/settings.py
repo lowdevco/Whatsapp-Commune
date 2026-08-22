@@ -10,10 +10,15 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 import os
+import sys
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
+if getattr(sys, 'frozen', False):
+    BASE_DIR = Path(sys._MEIPASS)
+else:
+    BASE_DIR = Path(__file__).resolve().parent.parent
+
 WHATSAPP_SESSIONS_DIR = os.path.join(BASE_DIR, "whatsapp_sessions")
 
 os.makedirs(WHATSAPP_SESSIONS_DIR, exist_ok=True)
@@ -27,7 +32,7 @@ SECRET_KEY = 'django-insecure-c3np$3n6knzv2h##8m+(yofbj)x!et#^v%ul$bdt2ax^46!h56
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -57,7 +62,11 @@ ROOT_URLCONF = 'whatsapp.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [
+            os.path.join(BASE_DIR, 'bulk', 'templates'),
+            os.path.join(BASE_DIR, 'templates'),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'bulk', 'templates'),
+        ],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -77,30 +86,22 @@ WSGI_APPLICATION = 'whatsapp.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
+# Create a permanent hidden folder for the app data
+APPDATA_DIR = os.path.join(os.environ.get('APPDATA', str(BASE_DIR)), 'WhatsApp Commune')
+os.makedirs(APPDATA_DIR, exist_ok=True)
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        # Save the database in APPDATA so it survives app restarts
+        'NAME': os.path.join(APPDATA_DIR, 'db.sqlite3'),
     }
 }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 
-AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
-]
+AUTH_PASSWORD_VALIDATORS = []
 
 
 # Internationalization
@@ -120,11 +121,35 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 LOGIN_URL = '/login/'  # Or wherever your login page is
+
+# Save user uploads (attachments) in APPDATA so they don't get deleted
 MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_ROOT = os.path.join(APPDATA_DIR, 'media')
+os.makedirs(MEDIA_ROOT, exist_ok=True)
+
 LOGIN_REDIRECT_URL = '/add-account/'
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
+
+# Guarantee users stay logged in for 10 years (Desktop App Behavior)
+SESSION_COOKIE_AGE = 315360000 
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+# Gemini AI API Configuration
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
+# Fallback sequence for models. Falls back automatically if one model hits Rate Limit (429) or is Unavailable (503).
+GEMINI_MODELS = [
+    os.environ.get("GEMINI_PRIMARY_MODEL", "gemini-3.5-flash-lite"),
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.1-flash-lite"
+]

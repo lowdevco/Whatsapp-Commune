@@ -1,6 +1,6 @@
 {% load static %}
 
-<section class="footersection">
+<section class="footersection mt-auto" style="margin-top: 100px !important;">
   <!-- Footer Section -->
   <footer class="footerarea">
     <!-- Wave SVG -->
@@ -12,24 +12,66 @@
 
     <!-- Footer Content -->
     <div class="footer-content">
-      <img class="footerlogo" src="{% static 'img/xencommune.png' %}" alt="logo">
-      <p>© 2026 XenCommune. All rights reserved.</p>
+      <img class="footerlogo" src="{% static 'img/whatsappcommune.png' %}" alt="logo">
+      <p>©2026 WhatsApp Commune. All rights reserved.</p>
     </div>
   </footer>
 </section>
 
 <!-- Footer JavaScript -->
 <script>
-  function submitSettings() {
-    const form = document.getElementById('settingsForm');
-    if (form) {
-      form.submit();
-    } else {
-      alert("Settings saved successfully!");
-    }
-  }
-
   document.addEventListener("DOMContentLoaded", function () {
+    const deleteButtons = document.querySelectorAll(".delete-account-btn");
+
+    deleteButtons.forEach(button => {
+      button.addEventListener("click", function (e) {
+        const form = button.closest(".delete-account-form");
+        
+        Swal.fire({
+          title: "Are you sure?",
+          text: "You won't be able to revert this!",
+          icon: "warning",
+          showCancelButton: true,
+          confirmButtonColor: "#d33",
+          cancelButtonColor: "#6c757d",
+          confirmButtonText: "Yes, delete it!",
+          customClass: {
+            confirmButton: 'rounded-0',
+            cancelButton: 'rounded-0',
+            popup: 'rounded-0'
+          }
+        }).then((result) => {
+          if (result.isConfirmed) {
+            form.submit();
+          }
+        });
+      });
+    });
+
+    const logoutBtn = document.querySelector(".logout-btn");
+    if (logoutBtn) {
+      logoutBtn.addEventListener("click", function (e) {
+        Swal.fire({
+          title: "Ready to leave?",
+          text: "Are you sure you want to log out?",
+          icon: "question",
+          showCancelButton: true,
+          confirmButtonColor: "#d33",
+          cancelButtonColor: "#6c757d",
+          confirmButtonText: "Yes, log out",
+          customClass: {
+            confirmButton: 'rounded-0',
+            cancelButton: 'rounded-0',
+            popup: 'rounded-0'
+          }
+        }).then((result) => {
+          if (result.isConfirmed) {
+            document.getElementById('logout-form').submit();
+          }
+        });
+      });
+    }
+
     // Country codes functionality
     const countryCodes = [
       { "name": "India", "dial_code": "+91" },

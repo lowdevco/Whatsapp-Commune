@@ -22,8 +22,4 @@ class WhatsAppAccountForm(forms.ModelForm):
             'is_default': forms.CheckboxInput(attrs={'class': 'form-check-input', 'id': 'setDefault'}),
         }
 
-    def clean_number(self):
-        number = self.cleaned_data.get('number')
-        if WhatsAppAccount.objects.filter(number=number).exists():
-            raise forms.ValidationError("An account with this phone number already exists.")
-        return number
+

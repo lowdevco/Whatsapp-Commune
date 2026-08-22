@@ -1,24 +1,27 @@
-# Byte-compiled / optimized / DLL files
+# Python/Django
 __pycache__/
-*__pycache__/
 *.py[cod]
 *$py.class
-./whatsapp/bulk/__pycache__
-# Virtual Environment
-.env/
-env/
-*env/
-
-
-# Sensitive & Local Files
-.env
+*.sqlite3
 db.sqlite3
-*.log
-media/
+
+# Virtual Environment
+env/
 
 # IDE
-.idea/
 .vscode/
+.idea/
 
-# Django Migrations: DO NOT IGNORE
-# migrations/   
+# Environment Variables
+.env
+
+# Application Specific (Crucial to ignore these so you don't commit your actual WhatsApp account data!)
+whatsapp/whatsapp_sessions/
+whatsapp/chrome_profile/
+whatsapp/media/
+whatsapp/whatsapp_uploads/
+whatsapp/build/
+whatsapp/dist/
+whatsapp/versions
+
+.agents/

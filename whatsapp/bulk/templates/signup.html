@@ -1,9 +1,41 @@
 {% extends "base.html" %}
+
 {% block content %}
-<h2>Sign Up</h2>
-<form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Sign Up</button>
-</form>
+<div class="container mt-5" style="max-width: 450px;">
+  <h3 class="mb-4 text-center">Create an Account</h3>
+  <div class="card shadow-sm border-0">
+    <div class="card-body p-4">
+      <form method="post">
+          {% csrf_token %}
+          
+          {% for field in form %}
+          <div class="mb-3">
+              <label class="form-label fw-bold">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}
+              <div class="form-text small">{{ field.help_text }}</div>
+              {% endif %}
+              {% for error in field.errors %}
+              <div class="text-danger small mt-1">{{ error }}</div>
+              {% endfor %}
+          </div>
+          {% endfor %}
+          
+          <button type="submit" class="btn btn-success w-100 mt-2">Create Account</button>
+      </form>
+    </div>
+  </div>
+  <div class="text-center mt-3">
+    <a href="{% url 'login' %}" class="text-secondary text-decoration-none">Already have an account?<span class="text-success fw-bold text-decoration-underline"> Login </span> </a>
+  </div>
+</div>
+
+<script>
+  // Automatically add Bootstrap styling to Django's raw inputs
+  document.querySelectorAll('input').forEach(input => {
+      if (input.type !== 'hidden' && input.type !== 'checkbox') {
+          input.classList.add('form-control');
+      }
+  });
+</script>
 {% endblock %}

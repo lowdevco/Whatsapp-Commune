@@ -5,35 +5,42 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}Xen-commune{% endblock %}</title>
+  <title>{% block title %}WhatsApp-commune{% endblock %}</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
   <link rel="stylesheet" href="{% static 'css/style.css' %}">
-  <link rel="icon" type="image/x-icon" href="{% static 'img/xencommunegreen.png' %}">
+  <link rel="icon" type="image/x-icon" href="{% static 'img/whatsappcommunegreen.png' %}">
   {% block extra_css %}{% endblock %}
+  <!-- SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
 
-<body>
+<body class="d-flex flex-column min-vh-100">
   <div id="splashScreen" style="
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100vh;
-  background-color: #fff;
+  background-color: #ffffff;
   z-index: 9999;
   display: flex;
+  flex-direction: column;
   justify-content: center;
-  align-items: center;">
-    <img src="{% static 'img/xencommunegreen.png' %}" alt="Loading..."
-      style="width: 150px; animation: spin 2s linear infinite;">
+  align-items: center;
+  transition: opacity 0.4s ease, visibility 0.4s ease;">
+    <img src="{% static 'img/whatsappcommunegreen.png' %}" alt="Loading..."
+      style="width: 160px; animation: pulseLogo 1.5s ease-in-out infinite; margin-bottom: 1.5rem;">
+    <div class="spinner-border text-success" role="status" style="width: 1.5rem; height: 1.5rem; opacity: 0.7;">
+      <span class="visually-hidden">Loading...</span>
+    </div>
   </div>
 
   <!-- Include Header -->
   {% include 'includes/header.html' %}
 
   <!-- Main Content -->
-  <main>
+  <main class="flex-grow-1">
     {% block content %}{% endblock %}
   </main>
 
@@ -43,13 +50,90 @@
   <!-- Scripts -->
   <script>
     function submitSettings() {
-      alert("Settings saved successfully!");
+      const form = document.getElementById('settingsForm');
+      const formData = new FormData(form);
+      const btn = document.querySelector('#settingsModal .btn-success');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Saving...';
+      btn.disabled = true;
+
+      fetch(form.action, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          try {
+            showToast('success', "Settings saved successfully!");
+          } catch(e) {
+            console.log("Toast failed", e);
+          }
+          
+          const modal = bootstrap.Modal.getInstance(document.getElementById('settingsModal'));
+          if (modal) modal.hide();
+
+          // Dynamically lock or unlock based on whether the key is empty
+          const aiCheckbox = document.getElementById('aiSpintax');
+          if (aiCheckbox) {
+            const parent = aiCheckbox.parentElement;
+            const label = document.querySelector('label[for="aiSpintax"]');
+            
+            if (data.has_key) {
+              // Unlock it
+              aiCheckbox.disabled = false;
+              if (parent) {
+                parent.classList.remove('text-muted');
+                parent.title = "Uses Google AI to rewrite your entire message uniquely every time";
+                const warning = parent.querySelector('.text-danger');
+                if (warning) warning.style.display = 'none';
+              }
+              if (label) {
+                label.style.textDecoration = 'none';
+                label.style.cursor = 'help';
+                label.classList.remove('text-muted');
+              }
+            } else {
+              // Lock it back
+              aiCheckbox.disabled = true;
+              aiCheckbox.checked = false; // Ensure it is unchecked if they delete the key
+              if (parent) {
+                parent.classList.add('text-muted');
+                parent.title = "Click the three dots (Settings) in the top right to add a Gemini API Key to enable AI Spintax.";
+                const warning = parent.querySelector('.text-danger');
+                if (warning) warning.style.display = 'block';
+              }
+              if (label) {
+                label.style.textDecoration = 'line-through';
+                label.style.cursor = 'not-allowed';
+                label.classList.add('text-muted');
+              }
+            }
+          }
+        } else {
+          if(typeof showToast === 'function') showToast('danger', "Failed to save settings.");
+        }
+      })
+      .catch(error => {
+        console.error(error);
+        if(typeof showToast === 'function') showToast('danger', "Network error occurred.");
+      })
+      .finally(() => {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+      });
     }
+
     window.addEventListener("load", function () {
       const splash = document.getElementById("splashScreen");
       if (splash) splash.style.display = "none";
     });
   </script>
+
+
 
   <script>
     function getCSRFToken() {
@@ -122,6 +206,19 @@
     }
   </script>
 
+  <script>
+    // Universal input validation for contact numbers across the project
+    document.addEventListener('input', function(e) {
+      // Single number fields (only allow digits and +)
+      if (e.target.name === 'number') {
+        e.target.value = e.target.value.replace(/[^0-9+]/g, '');
+      }
+      // Multiple number textareas (allow digits, +, spaces, newlines, and commas)
+      if (e.target.name === 'manual_numbers') {
+        e.target.value = e.target.value.replace(/[^0-9+\s,]/g, ''); 
+      }
+    });
+  </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="{% static 'js/script.js' %}"></script>

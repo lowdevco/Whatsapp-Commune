@@ -6,8 +6,10 @@
   <h3 class="mb-4 text-center">Login</h3>
   <form method="POST">
     {% csrf_token %}
-    {% if form.errors %}
-      <div class="alert alert-danger">Invalid username or password.</div>
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert {% if message.tags == 'error' %}alert-danger{% elif message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %}">{{ message }}</div>
+      {% endfor %}
     {% endif %}
     <div class="mb-3">
       <label for="id_username" class="form-label">Username</label>
@@ -19,7 +21,10 @@
     </div>
     <button type="submit" class="btn btn-success w-100">Login</button>
   </form>
-  <a href="{% url 'signup' %}" target="_blank">not logined yet? signup</a>
+  <div class="text-center mt-3">
+    <span class="text-muted">Don't have an account?</span> 
+    <a href="{% url 'signup' %}" class="text-success fw-bold text-decoration-underline">Create new Account</a>
+  </div>
 </div>
 
 {% endblock %}

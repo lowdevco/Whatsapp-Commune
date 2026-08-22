@@ -182,10 +182,11 @@ window.addEventListener('DOMContentLoaded', function () {
   
   // Populate country code dropdown
   if (select) {
+    select.innerHTML = '<option value="">-- Select Country --</option>';
     countryCodes.forEach(country => {
       const option = document.createElement("option");
       option.value = country.dial_code;
-      option.textContent = country.name;
+      option.textContent = `${country.name} (${country.dial_code})`;
       select.appendChild(option);
     });
     

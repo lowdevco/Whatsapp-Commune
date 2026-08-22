@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<!-- Back to Home Button -->
+<div class="m-2 d-flex align-items-center justify-content-start">
+  <a class="btn btn-outline-success" href="{% url 'index' %}">
+    <i class="bi bi-arrow-left-square-fill"></i> Back to Home
+  </a>
+</div>
+
+<div class="container mt-3 mb-5">
+  <div class="p-3 border rounded shadow-sm bg-white">
+    <div class="bg-success text-white py-2 px-3 mb-3 rounded d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span class="fw-bold fs-5"><i class="bi bi-clock-history me-2"></i>Campaign History</span>
+      <form method="get" class="d-flex align-items-center m-0">
+        <label class="me-2 text-white small fw-bold text-nowrap">SORT BY:</label>
+        <select name="sort" class="form-select form-select-sm border-0 rounded bg-white text-dark fw-semibold" style="cursor: pointer;" onchange="this.form.submit()">
+          <option value="newest" {% if sort_order == 'newest' %}selected{% endif %}>Newest to Oldest</option>
+          <option value="oldest" {% if sort_order == 'oldest' %}selected{% endif %}>Oldest to Newest</option>
+        </select>
+      </form>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-bordered table-hover align-middle mb-0">
+        <thead class="table-light text-secondary small text-uppercase">
+          <tr>
+            <th class="py-2">Campaign Name</th>
+            <th class="py-2">Date Started</th>
+            <th class="py-2">Account Used</th>
+            <th class="py-2 text-center">Messages</th>
+            <th class="py-2 text-center">Status</th>
+            <th class="py-2 text-end">Delivery Rate</th>
+            <th class="py-2 text-start ps-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for campaign in campaigns %}
+          <tr>
+            <td class="fw-bold text-dark">{{ campaign.name }}</td>
+            <td class="text-secondary small">{{ campaign.created_at|date:"M d, Y h:i A" }}</td>
+            <td>
+              {% if campaign.whatsapp_account %}
+                <span class="badge bg-light text-dark border rounded"><i class="bi bi-whatsapp me-1 text-success"></i>{{ campaign.whatsapp_account.number }}</span>
+              {% else %}
+                <span class="text-muted small">Deleted Account</span>
+              {% endif %}
+            </td>
+            <td class="text-center fw-bold">{{ campaign.total_messages }}</td>
+            <td class="text-center">
+              {% if campaign.status == 'Completed' %}
+                <span class="badge bg-success rounded"><i class="bi bi-check-circle-fill me-1"></i>Completed</span>
+              {% elif campaign.status == 'Running' %}
+                <span class="badge bg-primary rounded"><i class="bi bi-arrow-repeat me-1 spin-icon"></i>Running</span>
+              {% elif campaign.status == 'Failed' %}
+                <span class="badge bg-danger rounded"><i class="bi bi-exclamation-triangle-fill me-1"></i>Failed</span>
+              {% elif campaign.status == 'Stopped' %}
+                <span class="badge bg-warning text-dark rounded"><i class="bi bi-stop-circle-fill me-1"></i>Stopped</span>
+              {% else %}
+                <span class="badge bg-secondary rounded">{{ campaign.status }}</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <div class="d-flex align-items-center justify-content-end mb-1">
+                <span class="me-2 fw-bold text-success small">{{ campaign.total_sent }} Sent</span>
+                <span class="text-danger small">({{ campaign.total_failed }} Failed)</span>
+              </div>
+              <div class="progress rounded" style="height: 6px;">
+                {% if campaign.total_messages > 0 %}
+                  <div class="progress-bar bg-success" role="progressbar" style="width: {% widthratio campaign.total_sent campaign.total_messages 100 %}%"></div>
+                  <div class="progress-bar bg-danger" role="progressbar" style="width: {% widthratio campaign.total_failed campaign.total_messages 100 %}%"></div>
+                {% endif %}
+              </div>
+            </td>
+            <td class="text-start ps-3">
+              <div class="btn-group" role="group">
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded me-1" onclick="viewCampaign({{ campaign.id }})" title="View Details">
+                  <i class="bi bi-eye-fill"></i>
+                </button>
+                <a href="{% url 'relaunch_campaign' campaign.id %}" class="btn btn-sm btn-outline-success rounded me-1" title="Resend / Relaunch Campaign">
+                  <i class="bi bi-arrow-repeat me-1"></i>Resend
+                </a>
+                <a href="{% url 'delete_campaign' campaign.id %}" class="btn btn-sm btn-outline-danger rounded delete-campaign-btn me-1" title="Delete Campaign">
+                  <i class="bi bi-trash-fill"></i>
+                </a>
+                {% if campaign.total_failed > 0 or campaign.total_invalid > 0 %}
+                <a href="{% url 'download_campaign_report' campaign.id %}" class="btn btn-sm btn-outline-info rounded" title="Download Error Report (CSV)">
+                  <i class="bi bi-file-earmark-spreadsheet-fill"></i>
+                </a>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="7" class="text-center py-4">
+              <i class="bi bi-inbox fs-2 d-block mb-2 text-muted"></i>
+              <p class="text-muted mb-0">No campaigns found yet. Launch a new campaign to see it listed here!</p>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if campaigns.has_other_pages %}
+    <nav aria-label="Campaign history pagination" class="mt-4">
+      <ul class="pagination pagination-sm justify-content-center mb-0">
+        {% if campaigns.has_previous %}
+        <li class="page-item">
+          <a class="page-link text-success" href="?page={{ campaigns.previous_page_number }}&sort={{ sort_order }}" aria-label="Previous">
+            <span aria-hidden="true">&laquo;</span>
+          </a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">&laquo;</span></li>
+        {% endif %}
+
+        {% for i in campaigns.paginator.page_range %}
+          {% if campaigns.number == i %}
+            <li class="page-item active"><span class="page-link bg-success border-success">{{ i }}</span></li>
+          {% else %}
+            <li class="page-item"><a class="page-link text-success" href="?page={{ i }}&sort={{ sort_order }}">{{ i }}</a></li>
+          {% endif %}
+        {% endfor %}
+
+        {% if campaigns.has_next %}
+        <li class="page-item">
+          <a class="page-link text-success" href="?page={{ campaigns.next_page_number }}&sort={{ sort_order }}" aria-label="Next">
+            <span aria-hidden="true">&raquo;</span>
+          </a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">&raquo;</span></li>
+        {% endif %}
+      </ul>
+    </nav>
+    {% endif %}
+  </div>
+</div>
+
+<!-- View Campaign Modal -->
+<div class="modal fade" id="viewCampaignModal" tabindex="-1" aria-labelledby="viewCampaignModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content rounded border-0 shadow">
+      <div class="modal-header bg-success text-white">
+        <h5 class="modal-title fw-bold" id="viewCampaignModalLabel"><i class="bi bi-card-text me-2"></i>Campaign Details</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4" id="viewCampaignBody">
+        <div class="text-center py-4">
+          <div class="spinner-border text-success" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-secondary rounded" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function viewCampaign(id) {
+  const modal = new bootstrap.Modal(document.getElementById('viewCampaignModal'));
+  const body = document.getElementById('viewCampaignBody');
+  modal.show();
+  
+  body.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-success" role="status"></div><div class="mt-2 text-muted">Loading details...</div></div>';
+  
+  fetch(`/campaign/view/${id}/`)
+    .then(res => res.json())
+    .then(data => {
+      if(data.success) {
+        body.innerHTML = `
+          <div class="row g-3 mb-4">
+            <div class="col-md-6">
+              <p class="mb-1 text-muted small text-uppercase fw-bold">Campaign Name</p>
+              <h6 class="fw-bold mb-0">${data.name}</h6>
+            </div>
+            <div class="col-md-6">
+              <p class="mb-1 text-muted small text-uppercase fw-bold">Date Created</p>
+              <h6 class="fw-bold mb-0">${data.created_at}</h6>
+            </div>
+            <div class="col-md-6">
+              <p class="mb-1 text-muted small text-uppercase fw-bold">Account</p>
+              <h6 class="fw-bold mb-0"><span class="badge bg-secondary"><i class="bi bi-whatsapp me-1"></i>${data.account}</span></h6>
+            </div>
+            <div class="col-md-6">
+              <p class="mb-1 text-muted small text-uppercase fw-bold">Settings</p>
+              <div class="d-flex flex-wrap gap-1 align-items-center">
+                <span class="badge bg-secondary">Delay: ${data.delay}s</span>
+                ${data.use_ai_spintax ? '<span class="badge text-white" style="background-color: #6f42c1;"><i class="bi bi-robot me-1"></i>AI Spintax</span>' : ''}
+                ${data.use_normal_spintax ? '<span class="badge bg-dark text-white"><i class="bi bi-shuffle me-1"></i>Normal Spintax</span>' : ''}
+                ${data.friendly_numbers ? '<span class="badge bg-success"><i class="bi bi-people-fill me-1"></i>Friendly Numbers</span>' : ''}
+                ${data.safe_mode ? '<span class="badge bg-success">Safe Mode</span>' : ''}
+                ${data.deduplicate ? '<span class="badge bg-primary">Deduplicated</span>' : ''}
+              </div>
+            </div>
+          </div>
+          
+          <div class="mb-3">
+            <p class="mb-1 text-muted small text-uppercase fw-bold">Message 1</p>
+            <div class="p-3 bg-light rounded-3 border" style="white-space: pre-wrap;">${data.message1 || '<em class="text-muted">None</em>'}</div>
+          </div>
+          
+          <div class="mb-4">
+            <p class="mb-1 text-muted small text-uppercase fw-bold">Message 2</p>
+            <div class="p-3 bg-light rounded-3 border" style="white-space: pre-wrap;">${data.message2 || '<em class="text-muted">None</em>'}</div>
+          </div>
+          
+          <div>
+            <p class="mb-1 text-muted small text-uppercase fw-bold">Target Numbers</p>
+            <textarea class="form-control bg-white" rows="5" readonly>${data.numbers || ''}</textarea>
+          </div>
+        `;
+      } else {
+        body.innerHTML = `<div class="alert alert-danger">Error loading campaign details.</div>`;
+      }
+    })
+    .catch(err => {
+      body.innerHTML = `<div class="alert alert-danger">Network error occurred.</div>`;
+    });
+}
+</script>
+
+<style>
+  .spin-icon {
+    animation: spin 2s linear infinite;
+  }
+  @keyframes spin {
+    100% { transform: rotate(360deg); }
+  }
+</style>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const deleteButtons = document.querySelectorAll(".delete-campaign-btn");
+    deleteButtons.forEach(button => {
+      button.addEventListener("click", function (e) {
+        e.preventDefault();
+        const url = this.getAttribute("href");
+        Swal.fire({
+          title: "Are you sure?",
+          text: "You won't be able to revert this campaign deletion!",
+          icon: "warning",
+          showCancelButton: true,
+          confirmButtonColor: "#d33",
+          cancelButtonColor: "#6c757d",
+          confirmButtonText: "Yes, delete it!",
+          customClass: {
+            confirmButton: 'rounded-0',
+            cancelButton: 'rounded-0',
+            popup: 'rounded-0'
+          }
+        }).then((result) => {
+          if (result.isConfirmed) {
+            window.location.href = url;
+          }
+        });
+      });
+    });
+
+    {% if messages %}
+      {% for message in messages %}
+        const Toast = Swal.mixin({
+          toast: true,
+          position: 'top-end',
+          showConfirmButton: false,
+          timer: 3000,
+          timerProgressBar: true,
+          didOpen: (toast) => {
+            toast.addEventListener('mouseenter', Swal.stopTimer);
+            toast.addEventListener('mouseleave', Swal.resumeTimer);
+          }
+        });
+        Toast.fire({
+          icon: "{% if message.tags == 'error' %}error{% else %}success{% endif %}",
+          title: "{{ message|escapejs }}"
+        });
+      {% endfor %}
+    {% endif %}
+  });
+</script>
+{% endblock %}

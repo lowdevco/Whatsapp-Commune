@@ -446,3 +446,224 @@ select:focus {
 .dropdown-menu-custom.show {
   display: block;
 }
+
+/* --- Global Custom Scrollbars for Modern Look --- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+  background-color: rgb(25, 135, 84);
+  color: white;
+  border: none;
+}
+.Initiatebtn:hover {
+  background-color: rgb(12, 124, 72);
+  color: white;
+}
+.status-text {
+  font-weight: bold;
+  color: rgb(170, 1, 1);
+  margin-left: 15px;
+}
+.btn-stop{
+  background-color: #ee0000;
+  color: white;
+}
+.btn-stop:hover{
+  background-color: #cc1717;
+  color: white;
+}
+.important-notes {
+  font-size: 14px;
+  color: rgb(94, 94, 94);
+  padding-left: 20px;
+}
+.chatnameinput{
+  border: none;
+}
+.messagearea{
+  height: 300px;
+}
+.chatnameinput:focus{
+  border: none;
+  outline: none;
+}
+.addaccount{
+  text-decoration: none;
+  color: white;
+}
+@media (max-width: 576px) {
+  .btn,
+  .btn-outline,
+  .btn-warning,
+  .btn-danger {
+    width: 100%;
+    margin-bottom: 10px;
+  }
+  .status-text {
+    margin-top: 10px;
+    width: 100%;
+  }
+}
+
+
+
+
+/* ---------- */
+
+
+/* ----------------- */
+
+/*----------- WhatsApp Account Form Wrapper------- */
+.whatsapp-account-form {
+  background-color: #f9f9f9;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.08);
+  margin: 0 auto;
+}
+
+.whatsapp-account-form label {
+  font-weight: 600;
+  color: #333;
+}
+
+.whatsapp-account-form input,
+.whatsapp-account-form textarea,
+.whatsapp-account-form select {
+  border-radius: 8px;
+  border: 1px solid #ccc;
+}
+
+.whatsapp-account-form .btn-primary,
+.whatsapp-account-form .btn-success {
+  border-radius: 8px;
+  padding: 0.5rem 1.2rem;
+  font-weight: 600;
+}
+
+.whatsapp-account-form .btn-primary:hover,
+.whatsapp-account-form .btn-success:hover {
+  opacity: 0.9;
+}
+
+.whatsapp-account-form .form-check {
+  padding-left: 1.5rem;
+}
+
+@media (max-width: 576px) {
+  .whatsapp-account-form {
+    padding: 1rem;
+  }
+}
+
+.seetingslink{
+  text-decoration: none;
+}
+/* --------settings css starting  --------- */
+    .modal-lg {
+      max-width: 90%;
+    }
+    .settingsicon{
+      font-size: 24px;
+    }
+    .section-title {
+      font-weight: bold;
+      font-size: 18px;
+      margin-top: 20px;
+      color: black;
+    }
+    .form-section {
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 20px;
+    }
+
+
+    /* footer */
+   .footersection{
+    margin-top: 200px;
+   }
+    .footerarea {
+      /* background-image: url("{% static 'img/footerbg.png' %}"); */
+  position: relative;
+  background-color:rgb(25,135,84);
+  color: white;
+  padding: 60px 20px 5px;
+  text-align: center;
+}
+
+.wave-container {
+  position: absolute;
+  top: -100px; 
+  left: 0;
+  width: 100%;
+  overflow: hidden;
+  line-height: 0;
+}
+.footerlogo{
+  height: 100px;
+}
+.wave-svg {
+
+  display: block;
+  width: 100%;
+  height: 100px;
+}
+.dropdown-menu-custom {
+  display: none;
+  position: absolute;
+  background-color: #fff;
+  list-style: none;
+  padding: 10px 0;
+  margin: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  top: 100%;
+  left: 0;
+  width: 100%; /* Make dropdown match the button width */
+  border-radius: 4px;
+  z-index: 1000;
+}
+
+.dropdown-menu-custom li {
+  padding: 8px 15px;
+  cursor: pointer;
+}
+
+.dropdown-menu-custom li:hover {
+  background-color: #f0f0f0;
+}
+
+.dropdown-menu-custom.show {
+  display: block;
+}
+
+/* --- Global Custom Scrollbars for Modern Look --- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.15);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
+/* Loading Splash Screen Animations */
+@keyframes pulseLogo {
+  0% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.8; }
+}
